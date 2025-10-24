@@ -58,12 +58,12 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:orderId', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { orderId } = req.params;
+    const { orderId } = req.params ;
 
     const order = await prisma.order.findFirst({
       where: {
-        id: orderId,
-        userId,
+        id: orderId as string,
+        userId : userId,
       },
       include: {
         items: {
@@ -265,7 +265,7 @@ router.patch('/cancel/:orderId', async (req: Request, res: Response) => {
 
     const order = await prisma.order.findFirst({
       where: {
-        id: orderId,
+        id: orderId as string,
         userId,
       },
     });
@@ -281,7 +281,7 @@ router.patch('/cancel/:orderId', async (req: Request, res: Response) => {
     }
 
     const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
+      where: { id: orderId as string },
       data: {
         status: 'CANCELLED',
       },
@@ -371,7 +371,7 @@ router.patch(
       }
 
       const order = await prisma.order.update({
-        where: { id: orderId },
+        where: { id: orderId as string },
         data: { status },
         include: {
           items: {
