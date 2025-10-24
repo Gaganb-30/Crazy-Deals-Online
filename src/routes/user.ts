@@ -123,7 +123,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     return res.status(201).json({
       message: 'User registered successfully',
-      user,
+      user : user,
     });
   } catch (error) {
     console.error('Signup Error:', error);

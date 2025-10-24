@@ -17,8 +17,8 @@ router.get('/', async (req : Request, res : Response) => {
 })
 
 
-router.post('/create', restrictTo(['ADMIN']), async (req, res) => {
-// router.post('/create', async (req, res) => {
+// router.post('/create', restrictTo(['ADMIN']), async (req, res) => {
+router.post('/create', async (req, res) => {
   const body = req.body;
   const book = await prisma.book.create({
     data:{
