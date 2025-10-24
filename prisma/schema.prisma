@@ -13,37 +13,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// model User {
-//   id      Int     @id @default(autoincrement())
-//   email   String  @unique
-//   name    String?
-//   phone   String
-//   address String
-//   books   Book[]
-// }
-
-// model Book {
-//   id        Int           @id @default(autoincrement())
-//   title     String
-//   publisher String
-//   language  String
-//   price     Float
-//   available Boolean       @default(true)
-//   about     String?
-//   format    String
-//   user      User          @relation(fields: [userId], references: [id])
-//   userId    Int           @unique
-//   details   bookdetails[]
-// }
-
-// model bookdetails {
-//   isbn    String @id
-//   pages   Int
-//   country String
-//   book    Book   @relation(fields: [bookid], references: [id])
-//   bookid  Int    @unique
-// }
-
 model User {
   id       String  @id @default(uuid())
   email    String  @unique
@@ -52,20 +21,22 @@ model User {
   role     String  @default("USER")
   phone    String
   address  String
-  cart     Cart? // each user has one cart
+  cart     Cart?
+  orders   Order[]
 }
 
 model Book {
-  id        Int           @id @default(autoincrement())
-  title     String
-  publisher String
-  language  String
-  price     Float
-  available Boolean       @default(true)
-  about     String?
-  format    String
-  details   bookdetails[]
-  cartItems CartItem[] // many carts can contain same book
+  id         Int           @id @default(autoincrement())
+  title      String
+  publisher  String
+  language   String
+  price      Float
+  available  Boolean       @default(true)
+  about      String?
+  format     String
+  details    bookdetails[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
 }
 
 model bookdetails {
@@ -76,7 +47,6 @@ model bookdetails {
   bookid  Int    @unique
 }
 
-// Each user has one cart
 model Cart {
   id     Int        @id @default(autoincrement())
   user   User       @relation(fields: [userId], references: [id])
@@ -84,7 +54,6 @@ model Cart {
   items  CartItem[]
 }
 
-// Join table for cart <-> books with quantity
 model CartItem {
   id       Int  @id @default(autoincrement())
   cart     Cart @relation(fields: [cartId], references: [id])
@@ -93,5 +62,48 @@ model CartItem {
   bookId   Int
   quantity Int  @default(1)
 
-  @@unique([cartId, bookId]) // prevents duplicate book in same cart
+  @@unique([cartId, bookId])
+}
+
+model Order {
+  id               String        @id @default(uuid())
+  user             User          @relation(fields: [userId], references: [id])
+  userId           String
+  items            OrderItem[]
+  totalAmount      Float
+  status           OrderStatus   @default(PENDING)
+  paymentId        String? // Razorpay payment ID
+  paymentOrderId   String? // Razorpay order ID
+  paymentSignature String? // Razorpay signature
+  paymentStatus    PaymentStatus @default(PENDING)
+  shippingAddress  String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model OrderItem {
+  id       Int    @id @default(autoincrement())
+  order    Order  @relation(fields: [orderId], references: [id])
+  orderId  String
+  book     Book   @relation(fields: [bookId], references: [id])
+  bookId   Int
+  quantity Int
+  price    Float // Store price at time of order
+
+  @@unique([orderId, bookId])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
 }

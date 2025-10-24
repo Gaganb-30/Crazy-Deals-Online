@@ -13,14 +13,12 @@ router.get('/', async (req : Request, res : Response) => {
       available : true,
     }
   });
-  res.json(books);
+  res.json({books : books});
 })
 
 
-
-
-// router.post('/create', restrictTo(['ADMIN']), async (req, res) => {
-router.post('/create', async (req, res) => {
+router.post('/create', restrictTo(['ADMIN']), async (req, res) => {
+// router.post('/create', async (req, res) => {
   const body = req.body;
   const book = await prisma.book.create({
     data:{
@@ -41,6 +39,7 @@ router.post('/create', async (req, res) => {
   })
   res.json(book);
 })
+
 
 router.get('/:id', async (req : Request, res : Response) => {
   const book = await prisma.book.findUnique({
