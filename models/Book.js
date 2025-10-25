@@ -1,7 +1,7 @@
 // models/Book.js
 const mongoose = require("mongoose");
 const mongoosePaginate = require("mongoose-paginate-v2");
-const bookDetailsSchema = require("./schemas/BookDetails");
+const bookDetailsSchema = require("./schemas/bookDetails");
 
 const bookSchema = new mongoose.Schema(
   {
