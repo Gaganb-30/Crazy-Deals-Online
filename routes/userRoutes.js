@@ -79,7 +79,7 @@ router.get("/", authMiddleware, restrictTo(["ADMIN"]), getAllUsers);
  * @body    {role}
  */
 router.put(
-  "/:userId/role",
+  "/role/:userId",
   authMiddleware,
   restrictTo(["ADMIN"]),
   updateUserRole
