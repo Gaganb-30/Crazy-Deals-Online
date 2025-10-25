@@ -1,6 +1,7 @@
 // models/User.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const mongoosePaginate = require("mongoose-paginate-v2"); // Add this
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -39,26 +40,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
     address: {
-      street: {
-        type: String,
-        required: true,
-      },
-      city: {
-        type: String,
-        required: true,
-      },
-      state: {
-        type: String,
-        required: true,
-      },
-      zipCode: {
-        type: String,
-        required: true,
-      },
-      // country: {
-      //   type: String,
-      //   default: "India",
-      // },
+      street: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      zipCode: { type: String, required: true },
+      country: { type: String, default: "India" },
     },
     isActive: {
       type: Boolean,
@@ -102,5 +88,8 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 userSchema.methods.isAdmin = function () {
   return this.role === "ADMIN";
 };
+
+// Add pagination plugin to the schema
+userSchema.plugin(mongoosePaginate); // Add this line
 
 module.exports = mongoose.model("User", userSchema);

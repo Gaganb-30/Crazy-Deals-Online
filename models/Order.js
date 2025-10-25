@@ -1,5 +1,6 @@
 // models/Order.js
 const mongoose = require("mongoose");
+const mongoosePaginate = require("mongoose-paginate-v2");
 
 const orderItemSchema = new mongoose.Schema(
   {
@@ -194,5 +195,7 @@ orderSchema.methods.canBeCancelled = function () {
   const nonCancellableStatuses = ["SHIPPED", "DELIVERED", "CANCELLED"];
   return !nonCancellableStatuses.includes(this.status);
 };
+
+orderSchema.plugin(mongoosePaginate);
 
 module.exports = mongoose.model("Order", orderSchema);
