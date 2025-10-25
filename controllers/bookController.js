@@ -132,6 +132,7 @@ const getBookById = async (req, res) => {
 /**
  * Create new book (Admin only)
  */
+// In controllers/booksController.js - update createBook function
 const createBook = async (req, res) => {
   try {
     const {
@@ -153,8 +154,8 @@ const createBook = async (req, res) => {
       pages,
       country,
       publicationDate,
-      dimensions,
-      weight,
+      // dimensions,
+      // weight
     } = req.body;
 
     // Validation
@@ -195,7 +196,7 @@ const createBook = async (req, res) => {
     const bookData = {
       title,
       publisher,
-      language: language || "English",
+      language: language || "English", // Ensure language is set
       price: parseFloat(price),
       originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
       about,
@@ -211,8 +212,8 @@ const createBook = async (req, res) => {
         pages: pages ? parseInt(pages) : undefined,
         country: country || "India",
         publicationDate,
-        dimensions,
-        weight,
+        // dimensions,
+        // weight
       },
     };
 
@@ -224,9 +225,6 @@ const createBook = async (req, res) => {
     });
 
     const book = await Book.create(bookData);
-
-    // Populate virtuals
-    await book.save();
 
     res.status(201).json({
       success: true,
@@ -471,6 +469,7 @@ const getBooksByCategory = async (req, res) => {
 /**
  * Search books
  */
+// In controllers/booksController.js - update searchBooks function
 const searchBooks = async (req, res) => {
   try {
     const { q } = req.query;
@@ -483,17 +482,24 @@ const searchBooks = async (req, res) => {
       });
     }
 
+    // Use regex search instead of text search
+    const searchRegex = new RegExp(q, "i");
+
     const books = await Book.paginate(
       {
-        $text: { $search: q },
+        $or: [
+          { title: searchRegex },
+          { author: searchRegex },
+          { category: searchRegex },
+          { about: searchRegex },
+        ],
         available: true,
       },
       {
         page: parseInt(page),
         limit: parseInt(limit),
-        sort: { score: { $meta: "textScore" } },
+        sort: { createdAt: -1 },
         select: "id title author price format category images ratings",
-        projection: { score: { $meta: "textScore" } },
       }
     );
 
