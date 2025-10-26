@@ -18,7 +18,7 @@ const orderRoutes = require("./routes/orderRoutes");
 app.use(
   cors({
     origin: [
-      // 'http://localhost:5173',
+      "http://localhost:5173",
       // 'http://localhost:3000',
       // 'https://toxicgames.in',
       // 'http://toxicgames.in'
