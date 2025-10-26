@@ -19,7 +19,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      // 'http://localhost:3000',
+      "https://bookstore-frontend-react-v1.onrender.com",
       // 'https://toxicgames.in',
       // 'http://toxicgames.in'
     ],
