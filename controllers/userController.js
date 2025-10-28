@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Cart = require("../models/Cart");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const { generateToken } = require("./authController");
 
 // ========================
 // 🎯 CONTROLLER FUNCTIONS
@@ -74,7 +75,7 @@ const signup = async (req, res) => {
         role: user.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRES_IN }
     );
 
     res.status(201).json({
@@ -152,6 +153,15 @@ const login = async (req, res) => {
       });
     }
 
+    // Check if user uses Google OAuth
+    if (user.authProvider === "google") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This account uses Google authentication. Please sign in with Google.",
+      });
+    }
+
     // Verify password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
@@ -162,17 +172,9 @@ const login = async (req, res) => {
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      {
-        userId: user._id,
-        email: user.email,
-        role: user.role,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
-    );
+    const token = generateToken(user);
 
-    // Update last login timestamp (you can add this field to your model)
+    // Update last login timestamp
     user.lastLogin = new Date();
     await user.save();
 
@@ -186,12 +188,21 @@ const login = async (req, res) => {
           name: user.name,
           role: user.role,
           phone: user.phone,
+          authProvider: user.authProvider,
         },
         token,
       },
     });
   } catch (error) {
     console.error("Login Error:", error);
+
+    if (error.message === "This account uses Google authentication") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Failed to login",

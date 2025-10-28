@@ -4,6 +4,9 @@ const Book = require("../models/Book");
 const User = require("../models/User");
 const razorpay = require("razorpay");
 const crypto = require("crypto");
+const dotenv = require("dotenv");
+
+dotenv.config();
 
 // Initialize Razorpay
 const razorpayInstance = new razorpay({
