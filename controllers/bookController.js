@@ -1,5 +1,5 @@
 const Book = require("../models/Book");
-const { authMiddleware, restrictTo } = require("../middlewares/authMiddleware");
+const Fuse = require("fuse.js");
 
 // ========================
 // 🎯 CONTROLLER FUNCTIONS
@@ -39,9 +39,13 @@ const getAllBooks = async (req, res) => {
       if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
     }
 
-    // Text search
+    // Text search - using regex for basic search in getAllBooks
     if (search) {
-      filter.$text = { $search: search };
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { author: { $regex: search, $options: "i" } },
+        { category: { $regex: search, $options: "i" } },
+      ];
     }
 
     // Pagination options
@@ -103,9 +107,6 @@ const getBookById = async (req, res) => {
       });
     }
 
-    // Increment view count (you can add this field to your model)
-    // await Book.findByIdAndUpdate(id, { $inc: { views: 1 } });
-
     res.status(200).json({
       success: true,
       message: "Book retrieved successfully",
@@ -132,7 +133,6 @@ const getBookById = async (req, res) => {
 /**
  * Create new book (Admin only)
  */
-// In controllers/booksController.js - update createBook function
 const createBook = async (req, res) => {
   try {
     const {
@@ -154,8 +154,6 @@ const createBook = async (req, res) => {
       pages,
       country,
       publicationDate,
-      // dimensions,
-      // weight
     } = req.body;
 
     // Validation
@@ -196,7 +194,7 @@ const createBook = async (req, res) => {
     const bookData = {
       title,
       publisher,
-      language: language || "English", // Ensure language is set
+      language: language || "English",
       price: parseFloat(price),
       originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
       about,
@@ -212,8 +210,6 @@ const createBook = async (req, res) => {
         pages: pages ? parseInt(pages) : undefined,
         country: country || "India",
         publicationDate,
-        // dimensions,
-        // weight
       },
     };
 
@@ -393,8 +389,6 @@ const deleteBook = async (req, res) => {
       });
     }
 
-    // Check if book is in any active orders before deleting
-    // You might want to soft delete instead
     await Book.findByIdAndDelete(id);
 
     res.status(200).json({
@@ -467,56 +461,170 @@ const getBooksByCategory = async (req, res) => {
 };
 
 /**
- * Search books
+ * Advanced search using Fuse.js for fuzzy search
  */
-// In controllers/booksController.js - update searchBooks function
+/**
+ * Advanced search using Fuse.js for fuzzy search
+ */
 const searchBooks = async (req, res) => {
   try {
-    const { q } = req.query;
-    const { page = 1, limit = 10 } = req.query;
+    const { q, page = 1, limit = 10 } = req.query;
 
-    if (!q) {
+    if (!q || q.trim() === "") {
       return res.status(400).json({
         success: false,
         message: "Search query is required",
       });
     }
 
-    // Use regex search instead of text search
-    const searchRegex = new RegExp(q, "i");
+    // Get all available books for Fuse.js search
+    const allBooks = await Book.find(
+      { available: true },
+      "id title author price format category images ratings about tags"
+    ).lean();
 
-    const books = await Book.paginate(
-      {
-        $or: [
-          { title: searchRegex },
-          { author: searchRegex },
-          { category: searchRegex },
-          { about: searchRegex },
-        ],
-        available: true,
-      },
-      {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        sort: { createdAt: -1 },
-        select: "id title author price format category images ratings",
-      }
-    );
+    if (allBooks.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No books available",
+        data: {
+          books: [],
+          pagination: {
+            currentPage: 1,
+            totalPages: 0,
+            totalBooks: 0,
+          },
+        },
+      });
+    }
+
+    // Configure Fuse.js options
+    const fuseOptions = {
+      keys: [
+        { name: "title", weight: 0.6 },
+        { name: "author", weight: 0.3 },
+        { name: "category", weight: 0.05 },
+        { name: "tags", weight: 0.05 },
+      ],
+      includeScore: true,
+      threshold: 0.4,
+      distance: 100,
+      minMatchCharLength: 2,
+      shouldSort: true,
+    };
+
+    // Create Fuse instance
+    const fuse = new Fuse(allBooks, fuseOptions);
+
+    // Perform search
+    const searchResults = fuse.search(q);
+    console.log(`Fuse.js found ${searchResults.length} results`); // Debug log
+
+    // Extract books from search results
+    let books = searchResults.map((result) => ({
+      ...result.item,
+      relevanceScore: result.score,
+    }));
+
+    // Manual pagination for Fuse.js results
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const paginatedBooks = books.slice(startIndex, endIndex);
 
     res.status(200).json({
       success: true,
       message: `Search results for '${q}'`,
       data: {
-        books: books.docs,
+        books: paginatedBooks,
         pagination: {
-          currentPage: books.page,
-          totalPages: books.totalPages,
-          totalBooks: books.totalDocs,
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(books.length / limit),
+          totalBooks: books.length,
+          hasNext: endIndex < books.length,
+          hasPrev: startIndex > 0,
+        },
+        searchMeta: {
+          query: q,
+          totalMatches: books.length,
         },
       },
     });
   } catch (error) {
-    console.error("Error searching books:", error);
+    console.error("Error searching books with Fuse.js:", error);
+
+    // Send proper JSON error response
+    res.status(500).json({
+      success: false,
+      message: "Failed to search books",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Alternative: Hybrid search with MongoDB + Fuse.js
+ * For better performance with large datasets
+ */
+const hybridSearchBooks = async (req, res) => {
+  try {
+    const { q, page = 1, limit = 10 } = req.query;
+
+    if (!q || q.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required",
+      });
+    }
+
+    // First, use MongoDB regex for initial filtering (more efficient)
+    const initialResults = await Book.find(
+      {
+        available: true,
+        $or: [
+          { title: { $regex: q, $options: "i" } },
+          { author: { $regex: q, $options: "i" } },
+        ],
+      },
+      "id title author price format category images ratings about tags"
+    ).lean();
+
+    // Then use Fuse.js for fuzzy matching and ranking
+    const fuseOptions = {
+      keys: [
+        { name: "title", weight: 0.7 },
+        { name: "author", weight: 0.3 },
+      ],
+      includeScore: true,
+      threshold: 0.5,
+      shouldSort: true,
+    };
+
+    const fuse = new Fuse(initialResults, fuseOptions);
+    const searchResults = fuse.search(q);
+
+    let books = searchResults.map((result) => result.item);
+
+    // Manual pagination
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const paginatedBooks = books.slice(startIndex, endIndex);
+
+    res.status(200).json({
+      success: true,
+      message: `Search results for '${q}'`,
+      data: {
+        books: paginatedBooks,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(books.length / limit),
+          totalBooks: books.length,
+          hasNext: endIndex < books.length,
+          hasPrev: startIndex > 0,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error in hybrid book search:", error);
     res.status(500).json({
       success: false,
       message: "Failed to search books",
@@ -535,5 +643,6 @@ module.exports = {
   updateBook,
   deleteBook,
   getBooksByCategory,
-  searchBooks,
+  searchBooks, // Using Fuse.js for fuzzy search
+  hybridSearchBooks, // Optional: hybrid approach
 };
