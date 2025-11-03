@@ -132,6 +132,7 @@ const createPaymentOrder = async (req, res) => {
     // Validation
     if (
       !shippingAddress ||
+      !shippingAddress.hNo ||
       !shippingAddress.street ||
       !shippingAddress.city ||
       !shippingAddress.state ||
@@ -140,7 +141,7 @@ const createPaymentOrder = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Complete shipping address is required (street, city, state, zipCode)",
+          "Complete shipping address is required (hNO, street, city, state, zipCode)",
       });
     }
 

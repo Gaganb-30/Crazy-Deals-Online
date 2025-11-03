@@ -67,6 +67,41 @@ const cartSchema = new mongoose.Schema(
 // cartSchema.index({ user: 1 });
 cartSchema.index({ "items.book": 1 });
 
+// Virtual for total weight
+cartSchema.virtual("totalWeight").get(function () {
+  if (!this.items || this.items.length === 0) return 0;
+
+  return this.items.reduce((total, item) => {
+    // If book is populated and has weight, use it, otherwise assume default
+    const itemWeight = item.book?.weight || 300; // default 300g per book
+    return total + itemWeight * item.quantity;
+  }, 0);
+});
+
+// Virtual for delivery charge
+cartSchema.virtual("deliveryCharge").get(function () {
+  const totalWeight = this.totalWeight;
+
+  if (totalWeight <= 0) return 0;
+
+  // Delivery charge rules
+  if (totalWeight < 450) {
+    return 50;
+  } else if (totalWeight <= 1000) {
+    // 1kg = 1000g
+    return 80;
+  } else if (totalWeight <= 2000) {
+    // 2kg = 2000g
+    return 120;
+  } else {
+    // For weights above 2kg, you can add additional logic
+    // For now, let's charge 120 + 40 for every additional 500g
+    const additionalWeight = totalWeight - 2000;
+    const additionalCharges = Math.ceil(additionalWeight / 500) * 40;
+    return 120 + additionalCharges;
+  }
+});
+
 // Virtual for total price
 cartSchema.virtual("totalPrice").get(function () {
   return this.items.reduce(
@@ -75,14 +110,32 @@ cartSchema.virtual("totalPrice").get(function () {
   );
 });
 
+// Virtual for final total (items total + delivery)
+cartSchema.virtual("finalTotal").get(function () {
+  const itemsTotal = this.discountedPrice || this.totalPrice;
+  return itemsTotal + this.deliveryCharge;
+});
+
+// Method to calculate delivery charge (for use in controllers)
+cartSchema.methods.calculateDeliveryCharge = function (totalWeight) {
+  if (totalWeight <= 0) return 0;
+
+  if (totalWeight < 450) {
+    return 50;
+  } else if (totalWeight <= 1000) {
+    return 80;
+  } else if (totalWeight <= 2000) {
+    return 120;
+  } else {
+    const additionalWeight = totalWeight - 2000;
+    const additionalCharges = Math.ceil(additionalWeight / 500) * 40;
+    return 120 + additionalCharges;
+  }
+};
+
 // Virtual for total items count
 cartSchema.virtual("totalItems").get(function () {
   return this.items.reduce((total, item) => total + item.quantity, 0);
-});
-
-// Virtual for total items weight
-cartSchema.virtual("totalweight").get(function () {
-  return this.items.reduce((total, item) => total + item.weight, 0);
 });
 
 // Virtual for discounted price
