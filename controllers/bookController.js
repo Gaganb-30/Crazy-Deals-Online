@@ -1,3 +1,4 @@
+// controllers/cartController.js
 const Book = require("../models/Book");
 const Fuse = require("fuse.js");
 
@@ -461,6 +462,66 @@ const getBooksByCategory = async (req, res) => {
 };
 
 /**
+ * Get all unique book categories
+ */
+const getAllCategories = async (req, res) => {
+  try {
+    // Get distinct categories from available books
+    const categories = await Book.distinct("category", { available: true });
+
+    if (!categories || categories.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No categories found",
+      });
+    }
+
+    // Sort categories alphabetically
+    const sortedCategories = categories.sort();
+
+    // Optional: Get count of books in each category
+    const categoriesWithCounts = await Book.aggregate([
+      { $match: { available: true } },
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 },
+          // Get sample book for each category (optional)
+          sampleBook: { $first: "$title" },
+        },
+      },
+      {
+        $project: {
+          category: "$_id",
+          count: 1,
+          sampleBook: 1,
+          _id: 0,
+        },
+      },
+      { $sort: { category: 1 } },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Categories retrieved successfully",
+      data: {
+        categories: sortedCategories,
+        // Include counts if needed
+        categoriesWithCounts: categoriesWithCounts,
+        totalCategories: categories.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch categories",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Advanced search using Fuse.js for fuzzy search
  */
 /**
@@ -518,7 +579,6 @@ const searchBooks = async (req, res) => {
 
     // Perform search
     const searchResults = fuse.search(q);
-    console.log(`Fuse.js found ${searchResults.length} results`); // Debug log
 
     // Extract books from search results
     let books = searchResults.map((result) => ({
@@ -645,4 +705,5 @@ module.exports = {
   getBooksByCategory,
   searchBooks, // Using Fuse.js for fuzzy search
   hybridSearchBooks, // Optional: hybrid approach
+  getAllCategories,
 };

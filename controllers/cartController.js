@@ -28,6 +28,9 @@ const getCart = async (req, res) => {
           discountedPrice: 0,
           totalItems: 0,
           savings: 0,
+          totalWeight: 0,
+          deliveryCharge: 0,
+          finalTotal: 0,
         },
       });
     }
@@ -41,6 +44,9 @@ const getCart = async (req, res) => {
         discountedPrice: cart.discountedPrice,
         totalItems: cart.totalItems,
         savings: cart.savings,
+        totalWeight: cart.totalWeight,
+        deliveryCharge: cart.deliveryCharge,
+        finalTotal: cart.finalTotal,
       },
     });
   } catch (error) {
@@ -104,6 +110,9 @@ const addToCart = async (req, res) => {
         discountedPrice: cart.discountedPrice,
         totalItems: cart.totalItems,
         savings: cart.savings,
+        totalWeight: cart.totalWeight,
+        deliveryCharge: cart.deliveryCharge,
+        finalTotal: cart.finalTotal,
       },
     });
   } catch (error) {
@@ -162,13 +171,16 @@ const updateCartItem = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Cart item updated successfully",
+      message: "Cart Item updated successfully",
       data: {
         cart,
         totalPrice: cart.totalPrice,
         discountedPrice: cart.discountedPrice,
         totalItems: cart.totalItems,
         savings: cart.savings,
+        totalWeight: cart.totalWeight,
+        deliveryCharge: cart.deliveryCharge,
+        finalTotal: cart.finalTotal,
       },
     });
   } catch (error) {
@@ -225,6 +237,9 @@ const removeFromCart = async (req, res) => {
         discountedPrice: cart.discountedPrice,
         totalItems: cart.totalItems,
         savings: cart.savings,
+        totalWeight: cart.totalWeight,
+        deliveryCharge: cart.deliveryCharge,
+        finalTotal: cart.finalTotal,
       },
     });
   } catch (error) {
@@ -263,6 +278,9 @@ const clearCart = async (req, res) => {
         discountedPrice: 0,
         totalItems: 0,
         savings: 0,
+        totalWeight: 0,
+        deliveryCharge: 0,
+        finalTotal: 0,
       },
     });
   } catch (error) {
@@ -315,6 +333,9 @@ const applyCoupon = async (req, res) => {
         discountedPrice: cart.discountedPrice,
         totalItems: cart.totalItems,
         savings: cart.savings,
+        totalWeight: cart.totalWeight,
+        deliveryCharge: cart.deliveryCharge,
+        finalTotal: cart.finalTotal,
       },
     });
   } catch (error) {

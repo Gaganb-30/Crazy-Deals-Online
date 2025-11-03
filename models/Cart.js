@@ -19,6 +19,11 @@ const cartItemSchema = new mongoose.Schema(
       required: true,
       min: [0, "Price cannot be negative"],
     },
+    weight: {
+      type: Number, // in grams
+      required: true,
+      min: [1, "Weight must be positive"],
+    },
   },
   {
     _id: true,
@@ -73,6 +78,11 @@ cartSchema.virtual("totalPrice").get(function () {
 // Virtual for total items count
 cartSchema.virtual("totalItems").get(function () {
   return this.items.reduce((total, item) => total + item.quantity, 0);
+});
+
+// Virtual for total items weight
+cartSchema.virtual("totalweight").get(function () {
+  return this.items.reduce((total, item) => total + item.weight, 0);
 });
 
 // Virtual for discounted price

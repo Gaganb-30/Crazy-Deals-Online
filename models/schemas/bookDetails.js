@@ -27,10 +27,11 @@ const bookDetailsSchema = new mongoose.Schema(
     //   width: Number,
     //   depth: Number,
     // },
-    // weight: {
-    //   type: Number, // in grams
-    //   min: [1, "Weight must be positive"],
-    // },
+    weight: {
+      type: Number, // in grams
+      required: [true, "Weight is required"],
+      min: [1, "Weight must be positive"],
+    },
   },
   {
     _id: false, // Since it's embedded, we don't need separate _id

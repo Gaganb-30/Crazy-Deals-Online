@@ -1,3 +1,4 @@
+// routes/bookRoutes.js
 const express = require("express");
 const router = express.Router();
 const {
@@ -8,6 +9,7 @@ const {
   deleteBook,
   getBooksByCategory,
   searchBooks,
+  getAllCategories,
 } = require("../controllers/bookController");
 const { authMiddleware, restrictTo } = require("../middlewares/authMiddleware");
 
@@ -39,6 +41,13 @@ router.get("/search", searchBooks);
  * @query   page, limit
  */
 router.get("/category/:category", getBooksByCategory);
+
+/**
+ * @route   GET /api/books/categories
+ * @desc    Get all unique book categories
+ * @access  Public
+ */
+router.get("/categories", getAllCategories); // Add this route
 
 /**
  * @route   GET /api/books/:id
