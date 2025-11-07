@@ -46,7 +46,7 @@ const bookSchema = new mongoose.Schema(
     },
     format: {
       type: String,
-      enum: ["Paperback", "Hardcover", "E-book", "Audiobook"],
+      enum: ["Paperback", "Hardcover"],
       default: "Paperback",
     },
     category: {

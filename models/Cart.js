@@ -60,22 +60,34 @@ const cartSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
 // Index for better performance
-// cartSchema.index({ user: 1 });
+cartSchema.index({ user: 1 });
 cartSchema.index({ "items.book": 1 });
 
-// Virtual for total weight
-cartSchema.virtual("totalWeight").get(function () {
-  if (!this.items || this.items.length === 0) return 0;
+// Virtual for total price
+cartSchema.virtual("totalPrice").get(function () {
+  return this.items.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0
+  );
+});
 
-  return this.items.reduce((total, item) => {
-    // If book is populated and has weight, use it, otherwise assume default
-    const itemWeight = item.book?.weight || 300; // default 300g per book
-    return total + itemWeight * item.quantity;
-  }, 0);
+// Virtual for total items count
+cartSchema.virtual("totalItems").get(function () {
+  return this.items.reduce((total, item) => total + item.quantity, 0);
+});
+
+// Virtual for total weight (using stored weight)
+cartSchema.virtual("totalWeight").get(function () {
+  return this.items.reduce(
+    (total, item) => total + item.weight * item.quantity,
+    0
+  );
 });
 
 // Virtual for delivery charge
@@ -88,41 +100,6 @@ cartSchema.virtual("deliveryCharge").get(function () {
   if (totalWeight < 450) {
     return 50;
   } else if (totalWeight <= 1000) {
-    // 1kg = 1000g
-    return 80;
-  } else if (totalWeight <= 2000) {
-    // 2kg = 2000g
-    return 120;
-  } else {
-    // For weights above 2kg, you can add additional logic
-    // For now, let's charge 120 + 40 for every additional 500g
-    const additionalWeight = totalWeight - 2000;
-    const additionalCharges = Math.ceil(additionalWeight / 500) * 40;
-    return 120 + additionalCharges;
-  }
-});
-
-// Virtual for total price
-cartSchema.virtual("totalPrice").get(function () {
-  return this.items.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0
-  );
-});
-
-// Virtual for final total (items total + delivery)
-cartSchema.virtual("finalTotal").get(function () {
-  const itemsTotal = this.discountedPrice || this.totalPrice;
-  return itemsTotal + this.deliveryCharge;
-});
-
-// Method to calculate delivery charge (for use in controllers)
-cartSchema.methods.calculateDeliveryCharge = function (totalWeight) {
-  if (totalWeight <= 0) return 0;
-
-  if (totalWeight < 450) {
-    return 50;
-  } else if (totalWeight <= 1000) {
     return 80;
   } else if (totalWeight <= 2000) {
     return 120;
@@ -131,24 +108,21 @@ cartSchema.methods.calculateDeliveryCharge = function (totalWeight) {
     const additionalCharges = Math.ceil(additionalWeight / 500) * 40;
     return 120 + additionalCharges;
   }
-};
-
-// Virtual for total items count
-cartSchema.virtual("totalItems").get(function () {
-  return this.items.reduce((total, item) => total + item.quantity, 0);
 });
 
 // Virtual for discounted price
 cartSchema.virtual("discountedPrice").get(function () {
   const total = this.totalPrice;
+  let discounted = total;
+
   if (this.coupon && this.coupon.discount) {
     if (this.coupon.discountType === "percentage") {
-      return total - (total * this.coupon.discount) / 100;
+      discounted = total - (total * this.coupon.discount) / 100;
     } else {
-      return Math.max(0, total - this.coupon.discount);
+      discounted = Math.max(0, total - this.coupon.discount);
     }
   }
-  return total;
+  return discounted;
 });
 
 // Virtual for savings amount
@@ -156,12 +130,20 @@ cartSchema.virtual("savings").get(function () {
   return this.totalPrice - this.discountedPrice;
 });
 
-// Method to add item to cart with price validation
+// Virtual for final total (items total + delivery)
+cartSchema.virtual("finalTotal").get(function () {
+  const itemsTotal = this.discountedPrice;
+  return itemsTotal + this.deliveryCharge;
+});
+
+// Method to add item to cart with price and weight validation
 cartSchema.methods.addItem = async function (bookId, quantity = 1) {
   try {
-    // Get current book price
+    // Get current book price and weight from details
     const Book = mongoose.model("Book");
-    const book = await Book.findById(bookId).select("price available stock");
+    const book = await Book.findById(bookId).select(
+      "price available stock details.weight"
+    );
 
     if (!book) {
       throw new Error("Book not found");
@@ -174,6 +156,9 @@ cartSchema.methods.addItem = async function (bookId, quantity = 1) {
     if (book.stock < quantity) {
       throw new Error(`Only ${book.stock} items available in stock`);
     }
+
+    // Get weight from book.details.weight
+    const bookWeight = book.details?.weight || 300; // Default to 300g if not found
 
     const existingItem = this.items.find(
       (item) => item.book.toString() === bookId.toString()
@@ -189,6 +174,7 @@ cartSchema.methods.addItem = async function (bookId, quantity = 1) {
       }
       existingItem.quantity = newQuantity;
       existingItem.price = book.price; // Update price in case it changed
+      existingItem.weight = bookWeight; // Update weight in case it changed
     } else {
       if (quantity > book.stock) {
         throw new Error(`Only ${book.stock} items available in stock`);
@@ -197,6 +183,7 @@ cartSchema.methods.addItem = async function (bookId, quantity = 1) {
         book: bookId,
         quantity,
         price: book.price,
+        weight: bookWeight, // Store the book's weight from details
       });
     }
 
@@ -227,9 +214,9 @@ cartSchema.methods.updateQuantity = async function (bookId, quantity) {
       throw new Error("Cannot add more than 10 of the same book");
     }
 
-    // Check stock availability
+    // Check stock availability and get current weight
     const Book = mongoose.model("Book");
-    const book = await Book.findById(bookId).select("stock");
+    const book = await Book.findById(bookId).select("stock details.weight");
 
     if (!book) {
       throw new Error("Book not found");
@@ -239,11 +226,14 @@ cartSchema.methods.updateQuantity = async function (bookId, quantity) {
       throw new Error(`Only ${book.stock} items available in stock`);
     }
 
+    const bookWeight = book.details?.weight || 300;
+
     const item = this.items.find(
       (item) => item.book.toString() === bookId.toString()
     );
     if (item) {
       item.quantity = quantity;
+      item.weight = bookWeight; // Update weight in case it changed
       this.lastUpdated = new Date();
     }
 
@@ -287,7 +277,7 @@ cartSchema.methods.removeCoupon = function () {
 cartSchema.statics.findByUser = function (userId) {
   return this.findOne({ user: userId }).populate({
     path: "items.book",
-    select: "id title author price available stock format images",
+    select: "id title author price available stock format images details",
   });
 };
 

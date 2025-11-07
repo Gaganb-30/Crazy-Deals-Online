@@ -155,6 +155,7 @@ const createBook = async (req, res) => {
       pages,
       country,
       publicationDate,
+      weight,
     } = req.body;
 
     // Validation
@@ -211,6 +212,7 @@ const createBook = async (req, res) => {
         pages: pages ? parseInt(pages) : undefined,
         country: country || "India",
         publicationDate,
+        weight,
       },
     };
 
@@ -311,18 +313,25 @@ const updateBook = async (req, res) => {
     }
 
     // Handle nested details update
-    if (updateData.isbn || updateData.pages || updateData.country) {
+    if (
+      updateData.isbn ||
+      updateData.pages ||
+      updateData.country ||
+      updateData.weight
+    ) {
       updateData.details = {
         ...existingBook.details.toObject(),
         ...(updateData.isbn && { isbn: updateData.isbn }),
         ...(updateData.pages && { pages: parseInt(updateData.pages) }),
         ...(updateData.country && { country: updateData.country }),
+        ...(updateData.weight && { country: updateData.weight }),
       };
 
       // Remove the individual fields
       delete updateData.isbn;
       delete updateData.pages;
       delete updateData.country;
+      delete updateData.weight;
     }
 
     // Convert numeric fields

@@ -9,7 +9,10 @@ const getCart = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    const cart = await Cart.findByUser(userId);
+    const cart = await Cart.findOne({ user: userId }).populate({
+      path: "items.book",
+      select: "id title author price available stock format images details"
+    });
 
     if (!cart) {
       // Create empty cart if it doesn't exist
@@ -35,6 +38,7 @@ const getCart = async (req, res) => {
       });
     }
 
+    // Use the virtuals from the model
     res.json({
       success: true,
       message: "Cart retrieved successfully",
@@ -92,13 +96,13 @@ const addToCart = async (req, res) => {
       });
     }
 
-    // Add item to cart
+    // Add item to cart (this will store price and weight from book.details.weight)
     await cart.addItem(bookId, quantity);
 
-    // Populate the cart with book details
+    // Populate the cart with book details for display
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images",
+      select: "id title author price available stock format images details"
     });
 
     res.json({
@@ -166,12 +170,12 @@ const updateCartItem = async (req, res) => {
     // Populate the cart with book details
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images",
+      select: "id title author price available stock format images details"
     });
 
     res.json({
       success: true,
-      message: "Cart Item updated successfully",
+      message: "Cart item updated successfully",
       data: {
         cart,
         totalPrice: cart.totalPrice,
@@ -225,7 +229,7 @@ const removeFromCart = async (req, res) => {
     // Populate the cart with book details
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images",
+      select: "id title author price available stock format images details"
     });
 
     res.json({
@@ -321,7 +325,7 @@ const applyCoupon = async (req, res) => {
     // Populate the cart with book details
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images",
+      select: "id title author price available stock format images details"
     });
 
     res.json({
