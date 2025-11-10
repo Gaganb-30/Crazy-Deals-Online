@@ -518,6 +518,130 @@ const deleteUser = async (req, res) => {
   }
 };
 
+/**
+ * Get user's saved address
+ */
+const getSavedAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const user = await User.findById(userId).select("address");
+
+    res.json({
+      success: true,
+      message: "Address retrieved successfully",
+      data: {
+        address: user.address,
+        hasAddress: !!(
+          user.address &&
+          user.address.hNo &&
+          user.address.street &&
+          user.address.city &&
+          user.address.state &&
+          user.address.zipCode
+        ),
+      },
+    });
+  } catch (error) {
+    console.error("Get Saved Address Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch address",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Save/update user address
+ */
+const saveAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const addressData = req.body;
+
+    // Validate required fields
+    const requiredFields = ["hNo", "street", "city", "state", "zipCode"];
+    const missingFields = requiredFields.filter((field) => !addressData[field]);
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        address: {
+          hNo: addressData.hNo,
+          street: addressData.street,
+          city: addressData.city,
+          state: addressData.state,
+          zipCode: addressData.zipCode,
+          country: addressData.country || "India",
+        },
+      },
+      { new: true }
+    ).select("address");
+
+    res.json({
+      success: true,
+      message: "Address saved successfully",
+      data: {
+        address: user.address,
+      },
+    });
+  } catch (error) {
+    console.error("Save Address Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save address",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Delete saved address
+ */
+const deleteAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        address: {
+          hNo: "",
+          street: "",
+          city: "",
+          state: "",
+          zipCode: "",
+          country: "India",
+        },
+      },
+      { new: true }
+    ).select("address");
+
+    res.json({
+      success: true,
+      message: "Address deleted successfully",
+      data: {
+        address: user.address,
+      },
+    });
+  } catch (error) {
+    console.error("Delete Address Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete address",
+      error: error.message,
+    });
+  }
+};
+
 // ========================
 // 📦 EXPORT CONTROLLERS
 // ========================
@@ -530,4 +654,7 @@ module.exports = {
   getAllUsers,
   updateUserRole,
   deleteUser,
+  getSavedAddress,
+  saveAddress,
+  deleteAddress,
 };

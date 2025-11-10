@@ -11,7 +11,7 @@ const getCart = async (req, res) => {
 
     const cart = await Cart.findOne({ user: userId }).populate({
       path: "items.book",
-      select: "id title author price available stock format images details"
+      select: "id title author price available stock format images details",
     });
 
     if (!cart) {
@@ -102,7 +102,7 @@ const addToCart = async (req, res) => {
     // Populate the cart with book details for display
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images details"
+      select: "id title author price available stock format images details",
     });
 
     res.json({
@@ -170,7 +170,7 @@ const updateCartItem = async (req, res) => {
     // Populate the cart with book details
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images details"
+      select: "id title author price available stock format images details",
     });
 
     res.json({
@@ -229,7 +229,7 @@ const removeFromCart = async (req, res) => {
     // Populate the cart with book details
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images details"
+      select: "id title author price available stock format images details",
     });
 
     res.json({
@@ -325,7 +325,7 @@ const applyCoupon = async (req, res) => {
     // Populate the cart with book details
     await cart.populate({
       path: "items.book",
-      select: "id title author price available stock format images details"
+      select: "id title author price available stock format images details",
     });
 
     res.json({

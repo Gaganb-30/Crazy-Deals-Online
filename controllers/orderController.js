@@ -37,7 +37,7 @@ const getUserOrders = async (req, res) => {
       populate: [
         {
           path: "items.book",
-          select: "id title author format images",
+          select: "id title author format images price", // Added price for consistency
         },
       ],
     };
@@ -88,7 +88,7 @@ const getOrderById = async (req, res) => {
       user: userId,
     }).populate({
       path: "items.book",
-      select: "id title author format publisher images",
+      select: "id title author format publisher images price", // Added price
     });
 
     if (!order) {
@@ -124,31 +124,82 @@ const getOrderById = async (req, res) => {
 /**
  * Create Razorpay payment order
  */
+/**
+ * Create Razorpay payment order
+ */
 const createPaymentOrder = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { shippingAddress, paymentMethod = "RAZORPAY" } = req.body;
+    const {
+      shippingAddress,
+      paymentMethod = "RAZORPAY",
+      useSavedAddress = true,
+    } = req.body;
 
-    // Validation
+    // Get user with saved address
+    const user = await User.findById(userId).select("name email phone address");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    let finalShippingAddress = shippingAddress;
+
+    // If no shipping address provided and user wants to use saved address
+    if (!shippingAddress && useSavedAddress) {
+      // Check if user has a saved address that's complete
+      if (
+        !user.address ||
+        !user.address.hNo ||
+        !user.address.street ||
+        !user.address.city ||
+        !user.address.state ||
+        !user.address.zipCode
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "No shipping address provided and no complete saved address found",
+          data: {
+            hasSavedAddress: !!user.address,
+            savedAddress: user.address,
+          },
+        });
+      }
+
+      // Use the user's saved address
+      finalShippingAddress = {
+        hNo: user.address.hNo,
+        street: user.address.street,
+        city: user.address.city,
+        state: user.address.state,
+        zipCode: user.address.zipCode,
+        country: user.address.country || "India",
+      };
+    }
+
+    // Validate shipping address
     if (
-      !shippingAddress ||
-      !shippingAddress.hNo ||
-      !shippingAddress.street ||
-      !shippingAddress.city ||
-      !shippingAddress.state ||
-      !shippingAddress.zipCode
+      !finalShippingAddress ||
+      !finalShippingAddress.hNo ||
+      !finalShippingAddress.street ||
+      !finalShippingAddress.city ||
+      !finalShippingAddress.state ||
+      !finalShippingAddress.zipCode
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Complete shipping address is required (hNO, street, city, state, zipCode)",
+          "Complete shipping address is required (hNo, street, city, state, zipCode)",
       });
     }
 
     // Get user's cart with populated items
     const cart = await Cart.findOne({ user: userId }).populate({
       path: "items.book",
-      select: "id title price available stock format author",
+      select: "id title author price available stock format images details",
     });
 
     if (!cart || cart.items.length === 0) {
@@ -163,14 +214,19 @@ const createPaymentOrder = async (req, res) => {
     const outOfStockBooks = [];
 
     for (const item of cart.items) {
-      if (!item.book.available) {
-        unavailableBooks.push(item.book.title);
+      const book = item.book;
+      if (!book.available) {
+        unavailableBooks.push({
+          title: book.title,
+          id: book._id,
+        });
       }
-      if (item.book.stock < item.quantity) {
+      if (book.stock < item.quantity) {
         outOfStockBooks.push({
-          title: item.book.title,
+          title: book.title,
+          id: book._id,
           requested: item.quantity,
-          available: item.book.stock,
+          available: book.stock,
         });
       }
     }
@@ -179,7 +235,7 @@ const createPaymentOrder = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Some books are not available",
-        unavailableBooks,
+        data: { unavailableBooks },
       });
     }
 
@@ -187,18 +243,15 @@ const createPaymentOrder = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Insufficient stock for some books",
-        outOfStockBooks,
+        data: { outOfStockBooks },
       });
     }
 
-    // Calculate total amount
-    const totalAmount = cart.items.reduce((total, item) => {
-      return total + item.price * item.quantity;
-    }, 0);
-
-    // Apply discount if any
-    const discount = cart.discount || 0;
-    const finalAmount = totalAmount - discount;
+    // USE CART VIRTUALS FOR CONSISTENT CALCULATIONS
+    const totalAmount = cart.totalPrice;
+    const discount = cart.savings || 0;
+    const deliveryCharge = cart.deliveryCharge || 0;
+    const finalAmount = cart.finalTotal;
 
     if (finalAmount <= 0) {
       return res.status(400).json({
@@ -240,13 +293,18 @@ const createPaymentOrder = async (req, res) => {
         price: item.price,
         title: item.book.title,
         author: item.book.author,
+        format: item.book.format,
       })),
       totalAmount,
       discount,
+      deliveryCharge,
       finalAmount,
+      totalItems: cart.totalItems,
+      totalWeight: cart.totalWeight,
+      savings: cart.savings,
       paymentMethod,
-      shippingAddress,
-      billingAddress: shippingAddress, // Same as shipping for now
+      shippingAddress: finalShippingAddress,
+      billingAddress: finalShippingAddress,
       razorpay: razorpayOrder
         ? {
             orderId: razorpayOrder.id,
@@ -267,6 +325,7 @@ const createPaymentOrder = async (req, res) => {
       await clearCartAndUpdateStock(cart, order.items);
     }
 
+    // CONSISTENT RESPONSE STRUCTURE
     res.status(201).json({
       success: true,
       message:
@@ -277,9 +336,15 @@ const createPaymentOrder = async (req, res) => {
         order: {
           id: order._id,
           orderNumber: order.orderNumber,
+          totalAmount,
+          discount,
+          deliveryCharge,
           finalAmount,
+          totalItems: order.totalItems,
           status: order.status,
           paymentMethod,
+          shippingAddress: order.shippingAddress,
+          usedSavedAddress: !shippingAddress && useSavedAddress,
         },
         ...(razorpayOrder && {
           razorpayOrderId: razorpayOrder.id,
@@ -364,7 +429,7 @@ const verifyPayment = async (req, res) => {
     order.status = "CONFIRMED";
     await order.save();
 
-    // Get user's cart and clear it
+    // Get user's cart and clear it - USE CART MODEL'S CLEAR METHOD
     const cart = await Cart.findOne({ user: userId });
     if (cart) {
       await clearCartAndUpdateStock(cart, order.items);
@@ -379,6 +444,7 @@ const verifyPayment = async (req, res) => {
           orderNumber: order.orderNumber,
           status: order.status,
           paymentStatus: order.paymentStatus,
+          finalAmount: order.finalAmount,
         },
       },
     });
@@ -421,7 +487,7 @@ const cancelOrder = async (req, res) => {
     }
 
     // Check if order can be cancelled
-    if (!order.canBeCancelled()) {
+    if (!order.canBeCancelled || !order.canBeCancelled()) {
       return res.status(400).json({
         success: false,
         message: `Order cannot be cancelled in ${order.status} status`,
@@ -430,9 +496,12 @@ const cancelOrder = async (req, res) => {
 
     // Update order status
     order.status = "CANCELLED";
-    order.paymentStatus =
-      order.paymentStatus === "COMPLETED" ? "REFUNDED" : "FAILED";
-    order.notes = reason ? `Cancelled: ${reason}` : "Cancelled by user";
+    if (order.paymentStatus === "COMPLETED") {
+      order.paymentStatus = "REFUND_PENDING"; // Consider making this REFUNDED after actual refund
+    } else {
+      order.paymentStatus = "FAILED";
+    }
+    order.cancellationReason = reason || "Cancelled by user";
     order.cancelledAt = new Date();
     await order.save();
 
@@ -501,7 +570,7 @@ const getAllOrders = async (req, res) => {
         },
         {
           path: "items.book",
-          select: "id title author images",
+          select: "id title author images price format", // Added price and format
         },
       ],
     };
@@ -538,7 +607,7 @@ const getAllOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, trackingNumber, carrier, notes } = req.body;
+    const { status, trackingLink, notes } = req.body; // Removed trackingNumber, carrier
 
     if (!orderId) {
       return res.status(400).json({
@@ -570,40 +639,26 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Update order status
-    const updateData = { status };
-    if (notes) {
-      updateData.notes = order.notes ? `${order.notes}\n${notes}` : notes;
+    // Update order status using model method
+    await order.updateStatus(status, notes, true);
+
+    // Handle tracking link for shipped orders
+    if (status === "SHIPPED" && trackingLink) {
+      await order.addTrackingLink(trackingLink);
     }
 
-    // Handle tracking information
-    if (status === "SHIPPED") {
-      updateData.tracking = {
-        carrier: carrier || "Standard",
-        trackingNumber: trackingNumber,
-        trackingUrl: trackingNumber
-          ? `https://tracking.example.com/${trackingNumber}`
-          : undefined,
-      };
-      updateData.estimatedDelivery = new Date(
-        Date.now() + 7 * 24 * 60 * 60 * 1000
-      ); // 7 days from now
-    }
-
-    if (status === "DELIVERED") {
-      updateData.deliveredAt = new Date();
-      updateData.paymentStatus = "COMPLETED"; // Ensure payment is marked complete on delivery for COD
-    }
-
-    const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, {
-      new: true,
-      runValidators: true,
-    }).populate("user", "name email phone");
+    // Populate order for response
+    const updatedOrder = await Order.findById(orderId)
+      .populate("user", "name email phone")
+      .populate("items.book", "id title author images price format");
 
     res.json({
       success: true,
       message: "Order status updated successfully",
-      data: { order: updatedOrder },
+      data: {
+        order: updatedOrder,
+        trackingLink: updatedOrder.deliveryTracking?.trackingLink,
+      },
     });
   } catch (error) {
     console.error("Update Order Status Error:", error);
@@ -654,7 +709,7 @@ const getOrderStats = async (req, res) => {
       {
         $match: {
           createdAt: { $gte: startDate },
-          paymentStatus: "COMPLETED",
+          status: { $in: ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"] },
         },
       },
       {
@@ -663,6 +718,7 @@ const getOrderStats = async (req, res) => {
           totalOrders: { $sum: 1 },
           totalRevenue: { $sum: "$finalAmount" },
           averageOrderValue: { $avg: "$finalAmount" },
+          totalItemsSold: { $sum: "$totalItems" },
         },
       },
     ]);
@@ -678,6 +734,24 @@ const getOrderStats = async (req, res) => {
         $group: {
           _id: "$status",
           count: { $sum: 1 },
+          revenue: { $sum: "$finalAmount" },
+        },
+      },
+    ]);
+
+    // Get revenue by payment method
+    const paymentStats = await Order.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate },
+          status: { $in: ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"] },
+        },
+      },
+      {
+        $group: {
+          _id: "$paymentMethod",
+          count: { $sum: 1 },
+          revenue: { $sum: "$finalAmount" },
         },
       },
     ]);
@@ -690,9 +764,14 @@ const getOrderStats = async (req, res) => {
         totalOrders: 0,
         totalRevenue: 0,
         averageOrderValue: 0,
+        totalItemsSold: 0,
       }),
       statusBreakdown: statusStats.reduce((acc, stat) => {
-        acc[stat._id] = stat.count;
+        acc[stat._id] = { count: stat.count, revenue: stat.revenue };
+        return acc;
+      }, {}),
+      paymentBreakdown: paymentStats.reduce((acc, stat) => {
+        acc[stat._id] = { count: stat.count, revenue: stat.revenue };
         return acc;
       }, {}),
     };
@@ -717,19 +796,42 @@ const getOrderStats = async (req, res) => {
 // ========================
 
 /**
- * Clear cart and update book stock after successful order
+ * Clear cart and update book stock after successful order (Bulk version)
  */
 const clearCartAndUpdateStock = async (cart, orderItems) => {
   try {
     // Clear cart items
-    cart.items = [];
-    await cart.save();
+    await cart.clear();
 
-    // Update book stock
+    // Get all book IDs to update
+    const bookIds = orderItems.map((item) => item.book);
+    const books = await Book.find({ _id: { $in: bookIds } });
+
+    const bulkOps = [];
+
     for (const item of orderItems) {
-      await Book.findByIdAndUpdate(item.book, {
-        $inc: { stock: -item.quantity },
-      });
+      const book = books.find((b) => b._id.toString() === item.book.toString());
+      if (book) {
+        const newStock = book.stock - item.quantity;
+        const updateData = {
+          stock: newStock,
+        };
+
+        if (newStock <= 0) {
+          updateData.available = false;
+        }
+
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: item.book },
+            update: updateData,
+          },
+        });
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      await Book.bulkWrite(bulkOps);
     }
   } catch (error) {
     console.error("Error in clearCartAndUpdateStock:", error);
@@ -738,14 +840,22 @@ const clearCartAndUpdateStock = async (cart, orderItems) => {
 };
 
 /**
- * Restore book stock when order is cancelled
+ * Restore book stock when order is cancelled (Bulk version)
  */
 const restoreBookStock = async (orderItems) => {
   try {
-    for (const item of orderItems) {
-      await Book.findByIdAndUpdate(item.book, {
-        $inc: { stock: item.quantity },
-      });
+    const bulkOps = orderItems.map((item) => ({
+      updateOne: {
+        filter: { _id: item.book },
+        update: {
+          $inc: { stock: item.quantity },
+          $set: { available: true },
+        },
+      },
+    }));
+
+    if (bulkOps.length > 0) {
+      await Book.bulkWrite(bulkOps);
     }
   } catch (error) {
     console.error("Error in restoreBookStock:", error);

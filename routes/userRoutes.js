@@ -11,6 +11,9 @@ const {
   getAllUsers,
   updateUserRole,
   deleteUser,
+  getSavedAddress,
+  saveAddress,
+  deleteAddress,
 } = require("../controllers/userController");
 const { authMiddleware, restrictTo } = require("../middlewares/authMiddleware");
 
@@ -60,6 +63,11 @@ router.put("/profile", authMiddleware, updateProfile);
  * @body    {currentPassword, newPassword}
  */
 router.put("/change-password", authMiddleware, changePassword);
+
+// Address management routes
+router.get("/address", authMiddleware, getSavedAddress);
+router.put("/address", authMiddleware, saveAddress);
+router.delete("/address", authMiddleware, deleteAddress);
 
 // ========================
 // 🛡️ ADMIN ROUTES (Admin only)

@@ -297,6 +297,14 @@ const updateBook = async (req, res) => {
       });
     }
 
+    // Validate stock if provided
+    if (updateData.weight && updateData.weight < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Weight cannot be negative",
+      });
+    }
+
     // Check ISBN uniqueness if provided
     if (updateData.isbn && updateData.isbn !== existingBook.details.isbn) {
       const bookWithISBN = await Book.findOne({
@@ -324,7 +332,7 @@ const updateBook = async (req, res) => {
         ...(updateData.isbn && { isbn: updateData.isbn }),
         ...(updateData.pages && { pages: parseInt(updateData.pages) }),
         ...(updateData.country && { country: updateData.country }),
-        ...(updateData.weight && { country: updateData.weight }),
+        ...(updateData.weight && { weight: updateData.weight }),
       };
 
       // Remove the individual fields

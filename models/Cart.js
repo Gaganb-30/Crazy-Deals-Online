@@ -244,11 +244,17 @@ cartSchema.methods.updateQuantity = async function (bookId, quantity) {
 };
 
 // Method to clear cart
-cartSchema.methods.clear = function () {
-  this.items = [];
-  this.coupon = undefined;
-  this.lastUpdated = new Date();
-  return this.save();
+cartSchema.methods.clear = async function () {
+  try {
+    this.items = [];
+    this.discount = 0;
+    this.couponCode = null;
+    this.discountType = null;
+    await this.save();
+    return this;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Method to apply coupon
