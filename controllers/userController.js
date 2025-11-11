@@ -3,6 +3,10 @@ const Cart = require("../models/Cart");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { generateToken } = require("./authController");
+const {
+  validateAddress,
+  isAddressComplete,
+} = require("../utils/addressValidator");
 
 // ========================
 // 🎯 CONTROLLER FUNCTIONS
@@ -518,6 +522,30 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// Helper function to identify missing address fields
+const getMissingAddressFields = (address) => {
+  if (!address) return ["hNo", "street", "city", "state", "zipCode"];
+
+  const missing = [];
+  const requiredFields = ["hNo", "street", "city", "state", "zipCode"];
+
+  requiredFields.forEach((field) => {
+    if (
+      !address[field] ||
+      address[field].trim() === "" ||
+      address[field] === "Not provided"
+    ) {
+      missing.push(field);
+    }
+  });
+
+  if (address.zipCode === "000000") {
+    missing.push("zipCode");
+  }
+
+  return missing;
+};
+
 /**
  * Get user's saved address
  */
@@ -532,14 +560,11 @@ const getSavedAddress = async (req, res) => {
       message: "Address retrieved successfully",
       data: {
         address: user.address,
-        hasAddress: !!(
-          user.address &&
-          user.address.hNo &&
-          user.address.street &&
-          user.address.city &&
-          user.address.state &&
-          user.address.zipCode
-        ),
+        hasAddress: !!user.address,
+        isComplete: isComplete,
+        ...(!isComplete && {
+          missingFields: getMissingAddressFields(user.address),
+        }),
       },
     });
   } catch (error) {
@@ -561,13 +586,12 @@ const saveAddress = async (req, res) => {
     const addressData = req.body;
 
     // Validate required fields
-    const requiredFields = ["hNo", "street", "city", "state", "zipCode"];
-    const missingFields = requiredFields.filter((field) => !addressData[field]);
-
-    if (missingFields.length > 0) {
+    const validation = validateAddress(addressData);
+    if (!validation.isValid) {
       return res.status(400).json({
         success: false,
-        message: `Missing required fields: ${missingFields.join(", ")}`,
+        message: "Please provide complete address details",
+        errors: validation.errors,
       });
     }
 
@@ -575,11 +599,11 @@ const saveAddress = async (req, res) => {
       userId,
       {
         address: {
-          hNo: addressData.hNo,
-          street: addressData.street,
-          city: addressData.city,
-          state: addressData.state,
-          zipCode: addressData.zipCode,
+          hNo: addressData.hNo.trim(),
+          street: addressData.street.trim(),
+          city: addressData.city.trim(),
+          state: addressData.state.trim(),
+          zipCode: addressData.zipCode.trim(),
           country: addressData.country || "India",
         },
       },
@@ -591,6 +615,7 @@ const saveAddress = async (req, res) => {
       message: "Address saved successfully",
       data: {
         address: user.address,
+        isComplete: true,
       },
     });
   } catch (error) {

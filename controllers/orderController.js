@@ -2,6 +2,10 @@ const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Book = require("../models/Book");
 const User = require("../models/User");
+const {
+  validateAddress,
+  isAddressComplete,
+} = require("../utils/addressValidator");
 const razorpay = require("razorpay");
 const crypto = require("crypto");
 const dotenv = require("dotenv");
@@ -150,21 +154,16 @@ const createPaymentOrder = async (req, res) => {
     // If no shipping address provided and user wants to use saved address
     if (!shippingAddress && useSavedAddress) {
       // Check if user has a saved address that's complete
-      if (
-        !user.address ||
-        !user.address.hNo ||
-        !user.address.street ||
-        !user.address.city ||
-        !user.address.state ||
-        !user.address.zipCode
-      ) {
+      if (!isAddressComplete(user.address)) {
         return res.status(400).json({
           success: false,
           message:
             "No shipping address provided and no complete saved address found",
           data: {
+            requiresAddress: true,
             hasSavedAddress: !!user.address,
             savedAddress: user.address,
+            addressIncomplete: true,
           },
         });
       }
@@ -181,18 +180,17 @@ const createPaymentOrder = async (req, res) => {
     }
 
     // Validate shipping address
-    if (
-      !finalShippingAddress ||
-      !finalShippingAddress.hNo ||
-      !finalShippingAddress.street ||
-      !finalShippingAddress.city ||
-      !finalShippingAddress.state ||
-      !finalShippingAddress.zipCode
-    ) {
+    const addressValidation = validateAddress(finalShippingAddress);
+    if (!addressValidation.isValid) {
       return res.status(400).json({
         success: false,
         message:
           "Complete shipping address is required (hNo, street, city, state, zipCode)",
+        data: {
+          requiresAddress: true,
+          validationErrors: addressValidation.errors,
+          providedAddress: finalShippingAddress,
+        },
       });
     }
 
