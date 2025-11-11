@@ -135,25 +135,17 @@ userSchema.methods.isAdmin = function () {
 };
 
 // Check if user uses Google OAuth
-userSchema.methods.isGoogleUser = function () {
-  return this.authProvider === "google";
-};
-
-// Static method to find or create Google user
 userSchema.statics.findOrCreateGoogleUser = async function (profile) {
   try {
-    // Check if user already exists with this Google ID
+    // Check existing Google user
     let user = await this.findOne({ googleId: profile.id });
+    if (user) return user;
 
-    if (user) {
-      return user;
-    }
-
-    // Check if user exists with the same email
+    // Check existing email user
     user = await this.findOne({ email: profile.emails[0].value });
 
     if (user) {
-      // Link Google account to existing user
+      // Link Google to existing account
       user.googleId = profile.id;
       user.authProvider = "google";
       user.profilePicture = profile.photos[0].value;
@@ -162,27 +154,19 @@ userSchema.statics.findOrCreateGoogleUser = async function (profile) {
       return user;
     }
 
-    // Create new user for Google OAuth
-    user = await this.create({
+    // ✅ NEW: Create user WITHOUT address - it will be required at checkout
+    const newUser = await this.create({
       googleId: profile.id,
       email: profile.emails[0].value,
       name: profile.displayName,
       profilePicture: profile.photos[0].value,
       authProvider: "google",
       emailVerified: true,
-      // Set default values for required fields
-      phone: "Not provided",
-      address: {
-        hNo: "Not provided",
-        street: "Not provided",
-        city: "Not provided",
-        state: "Not provided",
-        zipCode: "000000",
-        country: "India",
-      },
+      // ❌ REMOVED: Don't set phone and address defaults
+      // Let users provide these during checkout
     });
 
-    return user;
+    return newUser;
   } catch (error) {
     throw error;
   }
