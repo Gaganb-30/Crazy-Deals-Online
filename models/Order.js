@@ -227,7 +227,6 @@ orderSchema.index({ orderNumber: "text" });
 
 // Pre-save middleware to generate order number and validate amounts
 orderSchema.pre("save", async function (next) {
-  console.log("error nhi aaya 1");
   if (this.isNew) {
     // Generate unique order number
     const timestamp = Date.now().toString().slice(-8);
