@@ -259,7 +259,7 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { name, phone, address } = req.body;
+    const { name, phoneData, address } = req.body;
 
     // Find user
     const user = await User.findById(userId);
@@ -273,7 +273,10 @@ const updateProfile = async (req, res) => {
     // Update fields
     const updateData = {};
     if (name !== undefined) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone;
+    if (phoneData !== undefined) {
+      updateData.phone = phoneData.phone;
+      updateData.optionalPhone = phoneData.optionalPhone;
+    }
     if (address !== undefined) updateData.address = address;
 
     const updatedUser = await User.findByIdAndUpdate(userId, updateData, {

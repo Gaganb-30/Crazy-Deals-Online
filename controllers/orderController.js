@@ -142,7 +142,9 @@ const createPaymentOrder = async (req, res) => {
     } = req.body;
 
     // Get user with saved address
-    const user = await User.findById(userId).select("name email phone address");
+    const user = await User.findById(userId).select(
+      "name email phone optionalPhone address"
+    );
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -151,6 +153,7 @@ const createPaymentOrder = async (req, res) => {
     }
 
     let finalShippingAddress = shippingAddress;
+    user.address.phone = user.phone;
 
     // If no shipping address provided and user wants to use saved address
     if (!shippingAddress && useSavedAddress) {
@@ -159,7 +162,7 @@ const createPaymentOrder = async (req, res) => {
         return res.status(400).json({
           success: false,
           message:
-            "No shipping address provided and no complete saved address found",
+            "No shipping address provided or no complete saved address found",
           data: {
             requiresAddress: true,
             hasSavedAddress: !!user.address,
@@ -171,6 +174,8 @@ const createPaymentOrder = async (req, res) => {
 
       // Use the user's saved address
       finalShippingAddress = {
+        phone: user.address.phone,
+        optionalPhone: user.optionalPhone,
         hNo: user.address.hNo,
         street: user.address.street,
         city: user.address.city,
@@ -186,7 +191,7 @@ const createPaymentOrder = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Complete shipping address is required (hNo, street, city, state, zipCode)",
+          "Complete shipping address is required (phone, hNo, street, city, state, zipCode)",
         data: {
           requiresAddress: true,
           validationErrors: addressValidation.errors,

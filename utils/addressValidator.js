@@ -1,5 +1,5 @@
 // utils/addressValidator.js
-const validateAddress = (address) => {
+const validateAddress = (address, phone) => {
   const errors = [];
 
   if (!address) {
@@ -7,8 +7,9 @@ const validateAddress = (address) => {
     return { isValid: false, errors };
   }
 
-  const requiredFields = ["hNo", "street", "city", "state", "zipCode"];
+  const requiredFields = ["phone", "hNo", "street", "city", "state", "zipCode"];
   const fieldLabels = {
+    phone: "Phone number",
     hNo: "House/Flat Number",
     street: "Street Address",
     city: "City",
@@ -25,6 +26,7 @@ const validateAddress = (address) => {
 
   // Check for default "Not provided" values
   if (
+    address.phone === "Not provided" ||
     address.hNo === "Not provided" ||
     address.street === "Not provided" ||
     address.city === "Not provided" ||
@@ -52,7 +54,7 @@ const validateAddress = (address) => {
 const isAddressComplete = (address) => {
   if (!address) return false;
 
-  const requiredFields = ["hNo", "street", "city", "state", "zipCode"];
+  const requiredFields = ["phone", "hNo", "street", "city", "state", "zipCode"];
   const hasAllFields = requiredFields.every(
     (field) =>
       address[field] &&
