@@ -92,11 +92,18 @@ cartSchema.virtual("totalWeight").get(function () {
 
 // Virtual for delivery charge
 cartSchema.virtual("deliveryCharge").get(function () {
+  const totalPrice = this.totalPrice;
+
+  // ✅ FREE DELIVERY for orders above ₹1500
+  if (totalPrice >= 1500) {
+    return 0;
+  }
+
   const totalWeight = this.totalWeight;
 
   if (totalWeight <= 0) return 0;
 
-  // Delivery charge rules
+  // Original delivery charge rules (only for orders below ₹1500)
   if (totalWeight < 450) {
     return 50;
   } else if (totalWeight <= 1000) {
@@ -107,6 +114,28 @@ cartSchema.virtual("deliveryCharge").get(function () {
     const additionalWeight = totalWeight - 2000;
     const additionalCharges = Math.ceil(additionalWeight / 500) * 40;
     return 120 + additionalCharges;
+  }
+});
+
+cartSchema.virtual("freeDeliveryInfo").get(function () {
+  const totalPrice = this.totalPrice;
+  const freeDeliveryThreshold = 1500;
+
+  if (totalPrice >= freeDeliveryThreshold) {
+    return {
+      isFreeDelivery: true,
+      message: "Congratulations! You've got FREE delivery",
+      threshold: freeDeliveryThreshold,
+      amountSaved: this.deliveryCharge, // This will be 0 now, but we can calculate what would have been charged
+    };
+  } else {
+    const amountNeeded = freeDeliveryThreshold - totalPrice;
+    return {
+      isFreeDelivery: false,
+      message: `Add ₹${amountNeeded} more for FREE delivery`,
+      threshold: freeDeliveryThreshold,
+      amountNeeded: amountNeeded,
+    };
   }
 });
 

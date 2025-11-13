@@ -9,6 +9,7 @@ const {
 const razorpay = require("razorpay");
 const crypto = require("crypto");
 const dotenv = require("dotenv");
+const { sendOrderNotification } = require("../utils/emailService");
 
 dotenv.config();
 
@@ -295,6 +296,7 @@ const createPaymentOrder = async (req, res) => {
       })),
       totalAmount,
       discount,
+      discount: cart.savings || 0,
       deliveryCharge,
       finalAmount,
       totalItems: cart.totalItems,
@@ -321,6 +323,13 @@ const createPaymentOrder = async (req, res) => {
 
       // Clear cart and update book stock
       await clearCartAndUpdateStock(cart, order.items);
+      try {
+        const user = await User.findById(userId);
+        await sendOrderNotification(order, user, "placed");
+      } catch (emailError) {
+        console.error("Failed to send order confirmation email:", emailError);
+        // Don't throw error, just log it
+      }
     }
 
     // CONSISTENT RESPONSE STRUCTURE
@@ -343,6 +352,8 @@ const createPaymentOrder = async (req, res) => {
           paymentMethod,
           shippingAddress: order.shippingAddress,
           usedSavedAddress: !shippingAddress && useSavedAddress,
+          freeDelivery: totalAmount >= 1500, // Explicit flag for frontend
+          freeDeliveryThreshold: 1500,
         },
         ...(razorpayOrder && {
           razorpayOrderId: razorpayOrder.id,
@@ -433,6 +444,14 @@ const verifyPayment = async (req, res) => {
       await clearCartAndUpdateStock(cart, order.items);
     }
 
+    try {
+      const user = await User.findById(userId);
+      await sendOrderNotification(order, user, "placed");
+    } catch (emailError) {
+      console.error("Failed to send order confirmation email:", emailError);
+      // Don't throw error, just log it
+    }
+
     res.json({
       success: true,
       message: "Payment verified successfully",
@@ -505,6 +524,15 @@ const cancelOrder = async (req, res) => {
 
     // Restore book stock
     await restoreBookStock(order.items);
+
+    // Send cancellation email
+    try {
+      const user = await User.findById(userId);
+      await sendOrderNotification(order, user, "cancelled");
+    } catch (emailError) {
+      console.error("Failed to send cancellation email:", emailError);
+      // Don't throw error, just log it
+    }
 
     res.json({
       success: true,

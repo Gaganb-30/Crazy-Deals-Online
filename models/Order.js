@@ -141,6 +141,15 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Savings cannot be negative"],
     },
+    // Add free delivery tracking
+    freeDelivery: {
+      type: Boolean,
+      default: false,
+    },
+    freeDeliveryThreshold: {
+      type: Number,
+      default: 1500,
+    },
 
     // Order status - Simplified for third-party delivery
     status: {
@@ -275,6 +284,29 @@ orderSchema.virtual("isPaid").get(function () {
   return (
     this.paymentStatus === "COMPLETED" || this.paymentStatus === "REFUNDED"
   );
+});
+
+orderSchema.virtual("deliverySavings").get(function () {
+  if (this.freeDelivery && this.deliveryCharge === 0) {
+    // Calculate what delivery would have cost without free delivery
+    const totalWeight = this.totalWeight;
+    let originalDeliveryCharge = 0;
+
+    if (totalWeight < 450) {
+      originalDeliveryCharge = 50;
+    } else if (totalWeight <= 1000) {
+      originalDeliveryCharge = 80;
+    } else if (totalWeight <= 2000) {
+      originalDeliveryCharge = 120;
+    } else {
+      const additionalWeight = totalWeight - 2000;
+      const additionalCharges = Math.ceil(additionalWeight / 500) * 40;
+      originalDeliveryCharge = 120 + additionalCharges;
+    }
+
+    return originalDeliveryCharge;
+  }
+  return 0;
 });
 
 // Virtual for canBeModified - orders that can still be modified/cancelled

@@ -8,7 +8,6 @@ const Book = require("../models/Book");
 const getCart = async (req, res) => {
   try {
     const userId = req.user.userId;
-
     const cart = await Cart.findOne({ user: userId }).populate({
       path: "items.book",
       select: "id title author price available stock format images details",
@@ -16,10 +15,7 @@ const getCart = async (req, res) => {
 
     if (!cart) {
       // Create empty cart if it doesn't exist
-      const newCart = new Cart({
-        user: userId,
-        items: [],
-      });
+      const newCart = new Cart({ user: userId, items: [] });
       await newCart.save();
 
       return res.json({
@@ -34,11 +30,17 @@ const getCart = async (req, res) => {
           totalWeight: 0,
           deliveryCharge: 0,
           finalTotal: 0,
+          freeDeliveryInfo: {
+            isFreeDelivery: false,
+            message: "Add ₹1500 for FREE delivery",
+            threshold: 1500,
+            amountNeeded: 1500,
+          },
         },
       });
     }
 
-    // Use the virtuals from the model
+    // ✅ Include freeDeliveryInfo in response
     res.json({
       success: true,
       message: "Cart retrieved successfully",
@@ -51,6 +53,7 @@ const getCart = async (req, res) => {
         totalWeight: cart.totalWeight,
         deliveryCharge: cart.deliveryCharge,
         finalTotal: cart.finalTotal,
+        freeDeliveryInfo: cart.freeDeliveryInfo, // Add this line
       },
     });
   } catch (error) {
@@ -117,6 +120,7 @@ const addToCart = async (req, res) => {
         totalWeight: cart.totalWeight,
         deliveryCharge: cart.deliveryCharge,
         finalTotal: cart.finalTotal,
+        freeDeliveryInfo: cart.freeDeliveryInfo, // Add this line
       },
     });
   } catch (error) {
@@ -185,6 +189,7 @@ const updateCartItem = async (req, res) => {
         totalWeight: cart.totalWeight,
         deliveryCharge: cart.deliveryCharge,
         finalTotal: cart.finalTotal,
+        freeDeliveryInfo: cart.freeDeliveryInfo, // Add this line
       },
     });
   } catch (error) {
@@ -244,6 +249,7 @@ const removeFromCart = async (req, res) => {
         totalWeight: cart.totalWeight,
         deliveryCharge: cart.deliveryCharge,
         finalTotal: cart.finalTotal,
+        freeDeliveryInfo: cart.freeDeliveryInfo,
       },
     });
   } catch (error) {
@@ -340,6 +346,7 @@ const applyCoupon = async (req, res) => {
         totalWeight: cart.totalWeight,
         deliveryCharge: cart.deliveryCharge,
         finalTotal: cart.finalTotal,
+        freeDeliveryInfo: cart.freeDeliveryInfo,
       },
     });
   } catch (error) {
