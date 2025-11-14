@@ -9,6 +9,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const passport = require("./OAuth/passport");
 const authRoutes = require("./routes/authRoutes");
 const contactRoutes = require("./routes/contactRoutes");
+const bulkImportRoutes = require("./routes/bulkImportRoutes");
 
 //middlewares
 
@@ -40,6 +41,9 @@ app.use("/api/users", userRoutes);
 
 //books
 app.use("/api/books", bookRoutes);
+
+//bulk uploads
+app.use("/api/bulk-import", bulkImportRoutes);
 
 // cart
 app.use("/api/cart", cartRoutes);
