@@ -13,7 +13,7 @@ const orderItemSchema = new mongoose.Schema(
       type: Number,
       required: [true, "Quantity is required"],
       min: [1, "Quantity must be at least 1"],
-      max: [10, "Cannot order more than 10 of a single book"],
+      // max: [10, "Cannot order more than 10 of a single book"],
     },
     price: {
       type: Number,

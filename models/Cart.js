@@ -12,7 +12,7 @@ const cartItemSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: [1, "Quantity must be at least 1"],
-      max: [10, "Cannot add more than 10 of the same book"],
+      // max: [10, "Cannot add more than 10 of the same book"],
     },
     price: {
       type: Number,
@@ -239,9 +239,9 @@ cartSchema.methods.updateQuantity = async function (bookId, quantity) {
       return this.removeItem(bookId);
     }
 
-    if (quantity > 10) {
-      throw new Error("Cannot add more than 10 of the same book");
-    }
+    // if (quantity > 10) {
+    //   throw new Error("Cannot add more than 10 of the same book");
+    // }
 
     // Check stock availability and get current weight
     const Book = mongoose.model("Book");
