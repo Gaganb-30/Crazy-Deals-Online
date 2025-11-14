@@ -54,6 +54,7 @@ const bookSchema = new mongoose.Schema(
       required: [true, "Category is required"],
       index: true,
       lowercase: true,
+      trim: true,
     },
     author: {
       type: String,
