@@ -152,6 +152,22 @@ bookSchema.methods.updateStock = function (quantity) {
   return this.save();
 };
 
+bookSchema.methods.remove = async function () {
+  try {
+    const bookId = this._id;
+
+    // Remove this book from all carts
+    await this.model("Cart").updateMany(
+      { "items.book": bookId },
+      { $pull: { items: { book: bookId } } }
+    );
+
+    console.log(`Removed book ${bookId} from all carts`);
+  } catch (error) {
+    console.log(error);
+  }
+};
+
 bookSchema.plugin(mongoosePaginate);
 
 module.exports = mongoose.model("Book", bookSchema);

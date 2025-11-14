@@ -399,7 +399,7 @@ const deleteBook = async (req, res) => {
       });
     }
 
-    const book = await Book.findById(id);
+    const book = await Book.findByIdAndDelete(id);
     if (!book) {
       return res.status(404).json({
         success: false,
@@ -407,11 +407,13 @@ const deleteBook = async (req, res) => {
       });
     }
 
-    await Book.findByIdAndDelete(id);
+    // This will trigger the pre-remove hook
+    await book.remove();
 
     res.status(200).json({
       success: true,
-      message: "Book deleted successfully",
+      message:
+        "Book deleted successfully and automatically removed from all carts",
     });
   } catch (error) {
     console.error("Error deleting book:", error);
