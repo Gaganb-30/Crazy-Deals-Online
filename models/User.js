@@ -101,9 +101,9 @@ const userSchema = new mongoose.Schema(
 );
 
 // Index for better query performance
-userSchema.index({ email: 1 });
+// userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
-userSchema.index({ googleId: 1 });
+// userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 userSchema.index({ authProvider: 1 });
 
 // Password hashing middleware (only for local authentication)

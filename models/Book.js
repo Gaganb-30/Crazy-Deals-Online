@@ -141,6 +141,16 @@ bookSchema.statics.searchBooks = function (query) {
   ).sort({ score: { $meta: "textScore" } });
 };
 
+bookSchema.statics.findFeatured = function (limit = 10) {
+  return this.find({
+    featured: true,
+    available: true,
+  })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .select("id title author price originalPrice format images about");
+};
+
 // Instance method to update stock
 bookSchema.methods.updateStock = function (quantity) {
   this.stock += quantity;
@@ -153,7 +163,7 @@ bookSchema.methods.updateStock = function (quantity) {
   return this.save();
 };
 
-bookSchema.methods.remove = async function () {
+bookSchema.methods.removeBook = async function () {
   try {
     const bookId = this._id;
 

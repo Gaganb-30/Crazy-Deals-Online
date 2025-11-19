@@ -66,7 +66,7 @@ const cartSchema = new mongoose.Schema(
 );
 
 // Index for better performance
-cartSchema.index({ user: 1 });
+// cartSchema.index({ user: 1 });
 cartSchema.index({ "items.book": 1 });
 
 // Virtual for total price

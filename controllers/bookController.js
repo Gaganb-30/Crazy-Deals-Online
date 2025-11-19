@@ -86,6 +86,52 @@ const getAllBooks = async (req, res) => {
 };
 
 /**
+ * Get featured books
+ */
+const getFeaturedBooks = async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { createdAt: -1 },
+      select: "id title author price available images featured about",
+    };
+
+    const books = await Book.paginate(
+      {
+        featured: true,
+        available: true,
+      },
+      options
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Featured books retrieved successfully",
+      data: {
+        books: books.docs,
+        pagination: {
+          currentPage: books.page,
+          totalPages: books.totalPages,
+          totalBooks: books.totalDocs,
+          hasNext: books.hasNextPage,
+          hasPrev: books.hasPrevPage,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching featured books:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch featured books",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Get single book by ID
  */
 const getBookById = async (req, res) => {
@@ -408,7 +454,7 @@ const deleteBook = async (req, res) => {
     }
 
     // This will trigger the pre-remove hook
-    await book.remove();
+    await book.removeBook();
 
     res.status(200).json({
       success: true,
@@ -717,6 +763,7 @@ const hybridSearchBooks = async (req, res) => {
 // ========================
 module.exports = {
   getAllBooks,
+  getFeaturedBooks,
   getBookById,
   createBook,
   updateBook,

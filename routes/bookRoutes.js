@@ -10,6 +10,7 @@ const {
   getBooksByCategory,
   searchBooks,
   getAllCategories,
+  getFeaturedBooks,
 } = require("../controllers/bookController");
 const { authMiddleware, restrictTo } = require("../middlewares/authMiddleware");
 
@@ -56,6 +57,14 @@ router.get("/categories", getAllCategories); // Add this route
  * @params  id
  */
 router.get("/:id", getBookById);
+
+/**
+ * @route   GET /api/books/featured
+ * @desc    Get featured books
+ * @access  Public
+ * @query   page, limit
+ */
+router.get("/featured/books", getFeaturedBooks);
 
 // ========================
 // 🔐 PROTECTED ROUTES (Admin only)

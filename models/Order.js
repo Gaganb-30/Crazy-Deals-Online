@@ -31,7 +31,7 @@ const orderItemSchema = new mongoose.Schema(
     format: {
       type: String,
       enum: ["Paperback", "Hardcover"],
-      default: "PAPERBACK",
+      default: "Paperback",
     },
   },
   {
@@ -75,15 +75,12 @@ const addressSchema = new mongoose.Schema({
 const razorpaySchema = new mongoose.Schema({
   orderId: {
     type: String,
-    sparse: true,
   },
   paymentId: {
     type: String,
-    sparse: true,
   },
   signature: {
     type: String,
-    sparse: true,
   },
 });
 
@@ -93,13 +90,11 @@ const orderSchema = new mongoose.Schema(
       type: String,
       unique: true,
       // required: true,
-      index: true,
     },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "User reference is required"],
-      index: true,
     },
     items: [orderItemSchema],
 
@@ -228,11 +223,11 @@ const orderSchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
-orderSchema.index({ user: 1, createdAt: -1 });
+orderSchema.index({ user: 1, createdAt: -1 }, { unique: true, sparse: true });
 orderSchema.index({ status: 1, createdAt: -1 });
-orderSchema.index({ "razorpay.orderId": 1 });
-orderSchema.index({ "razorpay.paymentId": 1 });
-orderSchema.index({ orderNumber: "text" });
+orderSchema.index({ "razorpay.orderId": 1 }, { unique: true, sparse: true });
+orderSchema.index({ "razorpay.paymentId": 1 }, { unique: true, sparse: true });
+orderSchema.index({ orderNumber: "text" }, { unique: true, sparse: true });
 
 // Pre-save middleware to generate order number and validate amounts
 orderSchema.pre("save", async function (next) {
