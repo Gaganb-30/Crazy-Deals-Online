@@ -500,7 +500,7 @@ const getBooksByCategory = async (req, res) => {
         page: parseInt(page),
         limit: parseInt(limit),
         sort: { createdAt: -1 },
-        select: "id title author price format images ratings",
+        select: "id title author price format images ratings stock",
       }
     );
 
@@ -592,9 +592,12 @@ const getAllCategories = async (req, res) => {
 /**
  * Advanced search using Fuse.js for fuzzy search
  */
+/**
+ * Enhanced search with ISBN support
+ */
 const searchBooks = async (req, res) => {
   try {
-    const { q, page = 1, limit = 10 } = req.query;
+    const { q, page = 1, limit = 10, searchType = "all" } = req.query;
 
     if (!q || q.trim() === "") {
       return res.status(400).json({
@@ -606,7 +609,7 @@ const searchBooks = async (req, res) => {
     // Get all available books for Fuse.js search
     const allBooks = await Book.find(
       { available: true },
-      "id title author price format category images ratings about tags"
+      "id title author price format category images ratings about tags details.isbn"
     ).lean();
 
     if (allBooks.length === 0) {
@@ -624,20 +627,57 @@ const searchBooks = async (req, res) => {
       });
     }
 
-    // Configure Fuse.js options
-    const fuseOptions = {
-      keys: [
-        { name: "title", weight: 0.6 },
-        { name: "author", weight: 0.3 },
-        { name: "category", weight: 0.05 },
-        { name: "tags", weight: 0.05 },
-      ],
-      includeScore: true,
-      threshold: 0.4,
-      distance: 100,
-      minMatchCharLength: 2,
-      shouldSort: true,
-    };
+    // Configure Fuse.js options based on search type
+    let fuseOptions;
+
+    switch (searchType) {
+      case "title":
+        fuseOptions = {
+          keys: [{ name: "title", weight: 1 }],
+          includeScore: true,
+          threshold: 0.4,
+          distance: 100,
+          minMatchCharLength: 2,
+          shouldSort: true,
+        };
+        break;
+      case "author":
+        fuseOptions = {
+          keys: [{ name: "author", weight: 1 }],
+          includeScore: true,
+          threshold: 0.4,
+          distance: 100,
+          minMatchCharLength: 2,
+          shouldSort: true,
+        };
+        break;
+      case "isbn":
+        fuseOptions = {
+          keys: [{ name: "details.isbn", weight: 1 }],
+          includeScore: true,
+          threshold: 0.3, // Lower threshold for exact ISBN matching
+          distance: 50,
+          minMatchCharLength: 1, // Allow partial ISBN matches
+          shouldSort: true,
+        };
+        break;
+      default:
+        // Search in all fields
+        fuseOptions = {
+          keys: [
+            { name: "title", weight: 0.5 },
+            { name: "author", weight: 0.3 },
+            { name: "details.isbn", weight: 0.1 },
+            { name: "category", weight: 0.05 },
+            { name: "tags", weight: 0.05 },
+          ],
+          includeScore: true,
+          threshold: 0.4,
+          distance: 100,
+          minMatchCharLength: 2,
+          shouldSort: true,
+        };
+    }
 
     // Create Fuse instance
     const fuse = new Fuse(allBooks, fuseOptions);
@@ -651,7 +691,7 @@ const searchBooks = async (req, res) => {
       relevanceScore: result.score,
     }));
 
-    // Manual pagination for Fuse.js results
+    // Manual pagination
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const paginatedBooks = books.slice(startIndex, endIndex);
@@ -670,14 +710,13 @@ const searchBooks = async (req, res) => {
         },
         searchMeta: {
           query: q,
+          searchType: searchType,
           totalMatches: books.length,
         },
       },
     });
   } catch (error) {
-    console.error("Error searching books with Fuse.js:", error);
-
-    // Send proper JSON error response
+    console.error("Error searching books:", error);
     res.status(500).json({
       success: false,
       message: "Failed to search books",
