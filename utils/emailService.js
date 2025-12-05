@@ -3,7 +3,7 @@ const nodemailer = require("nodemailer");
 // Create transporter with Hostinger SMTP settings
 const createTransporter = () => {
   return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || "smtp.hostinger.com",
+    host: process.env.EMAIL_HOST || "smtp.zoho.in",
     port: process.env.EMAIL_PORT || 465,
     secure: true, // Use SSL
     auth: {

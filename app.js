@@ -31,6 +31,14 @@ app.use(passport.initialize());
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(express.json({ limit: "16kb" }));
 
+// app.use((req, res, next) => {
+//   const allowedOrigin = "https://crazydealsonline.in";
+//   if (req.headers.origin && req.headers.origin !== allowedOrigin) {
+//     return res.status(403).json({ error: "Forbidden" });
+//   }
+//   next();
+// });
+
 app.get("/", (req, res) => {
   res.send("Hello");
 });

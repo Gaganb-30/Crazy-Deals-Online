@@ -30,7 +30,7 @@ const sendContactEmail = async (req, res) => {
 
     // Create transporter
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.hostinger.com",
+      host: process.env.SMTP_HOST || "smtp.zoho.in",
       port: process.env.SMTP_PORT || 465,
       secure: true,
       auth: {
