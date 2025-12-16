@@ -11,8 +11,14 @@ const {
   searchBooks,
   getAllCategories,
   getFeaturedBooks,
+  getHindiBooks,
+  getEnglishBooks,
+  exportBooksToExcel,
+  downloadExcelTemplate,
+  importBooksFromExcel,
 } = require("../controllers/bookController");
 const { authMiddleware, restrictTo } = require("../middlewares/authMiddleware");
+const upload = require("../middlewares/uploadMiddleware");
 
 // ========================
 // 📚 PUBLIC ROUTES
@@ -66,6 +72,22 @@ router.get("/:id", getBookById);
  */
 router.get("/featured/books", getFeaturedBooks);
 
+/**
+ * @route   GET /api/books/hindi
+ * @desc    Get hindi books
+ * @access  Public
+ * @query   page, limit
+ */
+router.get("/hindi/books", getHindiBooks);
+
+/**
+ * @route   GET /api/books/english
+ * @desc    Get english books
+ * @access  Public
+ * @query   page, limit
+ */
+router.get("/english/books", getEnglishBooks);
+
 // ========================
 // 🔐 PROTECTED ROUTES (Admin only)
 // ========================
@@ -92,5 +114,42 @@ router.put("/:id", authMiddleware, restrictTo(["ADMIN"]), updateBook);
  * @params  id
  */
 router.delete("/:id", authMiddleware, restrictTo(["ADMIN"]), deleteBook);
+
+/**
+ * @route   GET /api/books/export/excel
+ * @desc    Export all books to Excel
+ * @access  Private/Admin
+ */
+router.get(
+  "/export/excel", // Changed from /export/csv
+  authMiddleware,
+  restrictTo(["ADMIN"]),
+  exportBooksToExcel // Updated function name
+);
+
+/**
+ * @route   POST /api/books/import/excel
+ * @desc    Import/update books from Excel
+ * @access  Private/Admin
+ */
+router.post(
+  "/import/excel", // Changed from /import/csv
+  authMiddleware,
+  restrictTo(["ADMIN"]),
+  upload.single("file"), // Add this middleware
+  importBooksFromExcel // Updated function name
+);
+
+/**
+ * @route   GET /api/books/template/excel
+ * @desc    Download Excel template for bulk upload
+ * @access  Private/Admin
+ */
+router.get(
+  "/template/excel", // Changed from /template/csv
+  authMiddleware,
+  restrictTo(["ADMIN"]),
+  downloadExcelTemplate // Updated function name
+);
 
 module.exports = router;

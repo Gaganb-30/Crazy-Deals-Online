@@ -1,28 +1,24 @@
-//middlewares/uploadMiddleware.js
-
+// middlewares/uploadMiddleware.js
 const multer = require("multer");
 const path = require("path");
 
-// Configure storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "bulk-import-" + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// Configure storage - use memory storage for Excel processing
+const storage = multer.memoryStorage();
 
 // File filter for Excel files only
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = [
+  const allowedMimeTypes = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
     "application/vnd.ms-excel", // .xls
+    "application/octet-stream", // Some Excel files
   ];
 
-  if (allowedTypes.includes(file.mimetype)) {
+  const fileExt = path.extname(file.originalname).toLowerCase();
+
+  if (
+    allowedMimeTypes.includes(file.mimetype) ||
+    [".xlsx", ".xls"].includes(fileExt)
+  ) {
     cb(null, true);
   } else {
     cb(new Error("Only Excel files are allowed (.xlsx, .xls)"), false);
@@ -30,7 +26,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage: storage,
+  storage: storage, // Use memory storage for Excel buffer processing
   fileFilter: fileFilter,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit

@@ -91,7 +91,6 @@ const bookSchema = new mongoose.Schema(
 // Compound indexes for better query performance
 bookSchema.index({ category: 1, price: 1 });
 bookSchema.index({ author: 1 });
-bookSchema.index({ "ratings.average": -1 });
 bookSchema.index({ featured: -1, createdAt: -1 });
 bookSchema.index({ title: 1 }); // Regular index for title
 bookSchema.index({ available: 1, stock: 1 });

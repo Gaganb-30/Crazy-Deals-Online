@@ -1,6 +1,7 @@
-// controllers/cartController.js
+// controllers/bookController.js
 const Book = require("../models/Book");
 const Fuse = require("fuse.js");
+const XLSX = require("xlsx");
 
 // ========================
 // 🎯 CONTROLLER FUNCTIONS
@@ -55,7 +56,7 @@ const getAllBooks = async (req, res) => {
       limit: parseInt(limit),
       sort: { [sort]: order === "desc" ? -1 : 1 },
       select:
-        "id title author price available format category images ratings stock",
+        "id title author price originalPrice available format category images ratings stock",
     };
 
     // Execute query with pagination
@@ -96,7 +97,8 @@ const getFeaturedBooks = async (req, res) => {
       page: parseInt(page),
       limit: parseInt(limit),
       sort: { createdAt: -1 },
-      select: "id title author price available images featured about",
+      select:
+        "id title author price originalPrice available images featured about",
     };
 
     const books = await Book.paginate(
@@ -126,6 +128,100 @@ const getFeaturedBooks = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch featured books",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get hindi books
+ */
+const getHindiBooks = async (req, res) => {
+  try {
+    const { page = 1, limit = 18 } = req.query;
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { createdAt: -1 },
+      select:
+        "id title author price originalPrice stock available images featured about",
+    };
+
+    const books = await Book.paginate(
+      {
+        language: "Hindi",
+        available: true,
+      },
+      options
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Hindi books retrieved successfully",
+      data: {
+        books: books.docs,
+        pagination: {
+          currentPage: books.page,
+          totalPages: books.totalPages,
+          totalBooks: books.totalDocs,
+          hasNext: books.hasNextPage,
+          hasPrev: books.hasPrevPage,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching hindi books:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch hindi books",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get featured books
+ */
+const getEnglishBooks = async (req, res) => {
+  try {
+    const { page = 1, limit = 18 } = req.query;
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { createdAt: -1 },
+      select:
+        "id title author price originalPrice stock available images featured about",
+    };
+
+    const books = await Book.paginate(
+      {
+        language: "English",
+        available: true,
+      },
+      options
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "English books retrieved successfully",
+      data: {
+        books: books.docs,
+        pagination: {
+          currentPage: books.page,
+          totalPages: books.totalPages,
+          totalBooks: books.totalDocs,
+          hasNext: books.hasNextPage,
+          hasPrev: books.hasPrevPage,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching english books:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch english books",
       error: error.message,
     });
   }
@@ -500,7 +596,8 @@ const getBooksByCategory = async (req, res) => {
         page: parseInt(page),
         limit: parseInt(limit),
         sort: { createdAt: -1 },
-        select: "id title author price format images ratings stock",
+        select:
+          "id title author price originalPrice format images ratings stock",
       }
     );
 
@@ -589,9 +686,7 @@ const getAllCategories = async (req, res) => {
 /**
  * Advanced search using Fuse.js for fuzzy search
  */
-/**
- * Advanced search using Fuse.js for fuzzy search
- */
+
 /**
  * Enhanced search with ISBN support
  */
@@ -609,7 +704,7 @@ const searchBooks = async (req, res) => {
     // Get all available books for Fuse.js search
     const allBooks = await Book.find(
       { available: true },
-      "id title author price format category images ratings about tags details.isbn"
+      "id title author price originalPrice format category images ratings about tags details.isbn"
     ).lean();
 
     if (allBooks.length === 0) {
@@ -749,7 +844,7 @@ const hybridSearchBooks = async (req, res) => {
           { author: { $regex: q, $options: "i" } },
         ],
       },
-      "id title author price format category images ratings about tags"
+      "id title author price originalPrice format category images ratings about tags"
     ).lean();
 
     // Then use Fuse.js for fuzzy matching and ranking
@@ -797,12 +892,330 @@ const hybridSearchBooks = async (req, res) => {
   }
 };
 
+/**
+ * Export books to Excel
+ */
+const exportBooksToExcel = async (req, res) => {
+  try {
+    const books = await Book.find({}).lean();
+
+    // Transform data for Excel
+    const excelData = books.map((book) => ({
+      _id: book._id.toString(),
+      title: book.title,
+      publisher: book.publisher,
+      language: book.language,
+      price: book.price,
+      originalPrice: book.originalPrice,
+      available: book.available,
+      stock: book.stock,
+      about: book.about,
+      format: book.format,
+      category: book.category,
+      author: book.author,
+      tags: book.tags ? book.tags.join("|") : "",
+      featured: book.featured,
+      // Book details
+      isbn: book.details?.isbn,
+      pages: book.details?.pages,
+      country: book.details?.country,
+      publicationDate: book.details?.publicationDate
+        ? new Date(book.details.publicationDate).toISOString().split("T")[0]
+        : "",
+      weight: book.details?.weight,
+      // Images (primary image URL)
+      image_url:
+        book.images?.find((img) => img.isPrimary)?.url ||
+        book.images?.[0]?.url ||
+        "",
+    }));
+
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Books");
+
+    // Generate buffer
+    const excelBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=books_export.xlsx"
+    );
+    res.send(excelBuffer);
+  } catch (error) {
+    console.error("Export Excel Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export books to Excel",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Download Excel template
+ */
+const downloadExcelTemplate = async (req, res) => {
+  try {
+    const templateData = [
+      {
+        _id: "OPTIONAL - Leave empty for new books",
+        title: "Book Title (Required)",
+        publisher: "Publisher Name (Required)",
+        language: "English",
+        price: "499.00",
+        originalPrice: "699.00",
+        available: "true",
+        stock: "50",
+        about: "Book description...",
+        format: "Paperback",
+        category: "fiction",
+        author: "Author Name (Required)",
+        tags: "tag1|tag2|tag3",
+        featured: "false",
+        isbn: "9781234567890",
+        pages: "320",
+        country: "India",
+        publicationDate: "2024-01-15",
+        weight: "450",
+        image_url: "https://example.com/book-image.jpg",
+      },
+    ];
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(templateData);
+
+    // Add some formatting (column widths)
+    const wscols = [
+      { wch: 25 }, // _id
+      { wch: 40 }, // title
+      { wch: 30 }, // publisher
+      { wch: 15 }, // language
+      { wch: 15 }, // price
+      { wch: 15 }, // originalPrice
+      { wch: 10 }, // available
+      { wch: 10 }, // stock
+      { wch: 50 }, // about
+      { wch: 15 }, // format
+      { wch: 20 }, // category
+      { wch: 25 }, // author
+      { wch: 30 }, // tags
+      { wch: 10 }, // featured
+      { wch: 20 }, // isbn
+      { wch: 10 }, // pages
+      { wch: 15 }, // country
+      { wch: 15 }, // publicationDate
+      { wch: 10 }, // weight
+      { wch: 40 }, // image_url
+    ];
+
+    ws["!cols"] = wscols;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+
+    const excelBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=books_template.xlsx"
+    );
+    res.send(excelBuffer);
+  } catch (error) {
+    console.error("Download Template Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to download template",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Import books from Excel
+ */
+const importBooksFromExcel = async (req, res) => {
+  console.log("Import Excel Request Received");
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: "No Excel file uploaded",
+      });
+    }
+
+    // Read Excel file from buffer
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Convert to JSON
+    const rows = XLSX.utils.sheet_to_json(worksheet);
+
+    const results = [];
+    const errors = [];
+    let processed = 0;
+
+    // Process each row
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        const rowData = rows[i];
+
+        // Skip empty rows
+        if (!rowData.title && !rowData.author) {
+          continue;
+        }
+
+        // Validate required fields
+        if (!rowData.title || !rowData.publisher || !rowData.author) {
+          errors.push(
+            `Row ${i + 2}: Missing required fields (title, publisher, author)`
+          );
+          continue;
+        }
+
+        // Prepare book data
+        const bookData = {
+          title: String(rowData.title).trim(),
+          publisher: String(rowData.publisher).trim(),
+          language: rowData.language
+            ? String(rowData.language).trim()
+            : "English",
+          price: parseFloat(rowData.price) || 0,
+          originalPrice:
+            parseFloat(rowData.originalPrice) || parseFloat(rowData.price) || 0,
+          available:
+            rowData.available !== undefined
+              ? String(rowData.available).toLowerCase() === "true"
+              : true,
+          stock: parseInt(rowData.stock) || 0,
+          about: rowData.about ? String(rowData.about).trim() : "",
+          format: ["Paperback", "Hardcover"].includes(rowData.format)
+            ? rowData.format
+            : "Paperback",
+          category: rowData.category
+            ? String(rowData.category).trim().toLowerCase()
+            : "general",
+          author: String(rowData.author).trim(),
+          tags: rowData.tags
+            ? String(rowData.tags)
+                .split("|")
+                .map((tag) => tag.trim())
+                .filter((tag) => tag)
+            : [],
+          featured:
+            rowData.featured !== undefined
+              ? String(rowData.featured).toLowerCase() === "true"
+              : false,
+          details: {
+            isbn: rowData.isbn
+              ? String(rowData.isbn).trim()
+              : `TEMP-${Date.now()}-${i}`,
+            pages: parseInt(rowData.pages) || 0,
+            country: rowData.country ? String(rowData.country).trim() : "India",
+            publicationDate: rowData.publicationDate
+              ? new Date(rowData.publicationDate)
+              : null,
+            weight: parseInt(rowData.weight) || 300,
+          },
+          images: rowData.image_url
+            ? [
+                {
+                  url: String(rowData.image_url).trim(),
+                  alt: String(rowData.title).trim(),
+                  isPrimary: true,
+                },
+              ]
+            : [],
+        };
+
+        let result;
+
+        // Update existing book or create new one
+        if (rowData._id && String(rowData._id).trim()) {
+          // Update existing book
+          result = await Book.findByIdAndUpdate(
+            String(rowData._id).trim(),
+            bookData,
+            {
+              new: true,
+              runValidators: true,
+            }
+          );
+          if (!result) {
+            errors.push(`Row ${i + 2}: Book with ID ${rowData._id} not found`);
+            continue;
+          }
+          results.push({ action: "updated", book: result, row: i + 2 });
+        } else {
+          // Check if ISBN already exists
+          if (rowData.isbn) {
+            const existingBook = await Book.findOne({
+              "details.isbn": String(rowData.isbn).trim(),
+            });
+            if (existingBook) {
+              errors.push(`Row ${i + 2}: ISBN ${rowData.isbn} already exists`);
+              continue;
+            }
+          }
+
+          // Create new book
+          result = await Book.create(bookData);
+          results.push({ action: "created", book: result, row: i + 2 });
+        }
+
+        processed++;
+      } catch (error) {
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Processed ${processed} books successfully`,
+      data: {
+        processed,
+        totalRows: rows.length,
+        results: results.slice(0, 10), // Return first 10 results
+        errors: errors.length > 0 ? errors : undefined,
+        summary: {
+          created: results.filter((r) => r.action === "created").length,
+          updated: results.filter((r) => r.action === "updated").length,
+          failed: errors.length,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Import Excel Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to import books from Excel",
+      error: error.message,
+    });
+  }
+};
+
 // ========================
 // 📦 EXPORT CONTROLLERS
 // ========================
 module.exports = {
   getAllBooks,
   getFeaturedBooks,
+  getHindiBooks,
+  getEnglishBooks,
   getBookById,
   createBook,
   updateBook,
@@ -811,4 +1224,7 @@ module.exports = {
   searchBooks, // Using Fuse.js for fuzzy search
   hybridSearchBooks, // Optional: hybrid approach
   getAllCategories,
+  exportBooksToExcel,
+  downloadExcelTemplate,
+  importBooksFromExcel,
 };
