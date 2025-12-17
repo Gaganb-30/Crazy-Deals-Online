@@ -704,7 +704,7 @@ const searchBooks = async (req, res) => {
     // Get all available books for Fuse.js search
     const allBooks = await Book.find(
       { available: true },
-      "id title author price originalPrice format category images ratings about tags details.isbn"
+      "id title author stock price originalPrice format category images ratings about tags details.isbn"
     ).lean();
 
     if (allBooks.length === 0) {
