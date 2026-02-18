@@ -47,6 +47,7 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: "Invalid token",
+        code: "TOKEN_INVALID",
       });
     }
 
@@ -54,6 +55,7 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: "Token expired",
+        code: "TOKEN_EXPIRED",
       });
     }
 
