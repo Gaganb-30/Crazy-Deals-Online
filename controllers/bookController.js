@@ -1071,6 +1071,7 @@ const importBooksFromExcel = async (req, res) => {
 
     // Process each row
     for (let i = 0; i < rows.length; i++) {
+      // console.log("Row", i, rows[i]);
       try {
         const rowData = rows[i];
 
