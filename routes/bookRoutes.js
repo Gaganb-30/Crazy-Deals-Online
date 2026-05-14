@@ -54,15 +54,7 @@ router.get("/category/:category", getBooksByCategory);
  * @desc    Get all unique book categories
  * @access  Public
  */
-router.get("/categories", getAllCategories); // Add this route
-
-/**
- * @route   GET /api/books/:id
- * @desc    Get single book by ID
- * @access  Public
- * @params  id
- */
-router.get("/:id", getBookById);
+router.get("/categories", getAllCategories);
 
 /**
  * @route   GET /api/books/featured
@@ -93,6 +85,43 @@ router.get("/english/books", getEnglishBooks);
 // ========================
 
 /**
+ * @route   GET /api/books/export/excel
+ * @desc    Export all books to Excel
+ * @access  Private/Admin
+ */
+router.get(
+  "/export/excel",
+  authMiddleware,
+  restrictTo(["ADMIN"]),
+  exportBooksToExcel
+);
+
+/**
+ * @route   GET /api/books/template/excel
+ * @desc    Download Excel template for bulk upload
+ * @access  Private/Admin
+ */
+router.get(
+  "/template/excel",
+  authMiddleware,
+  restrictTo(["ADMIN"]),
+  downloadExcelTemplate
+);
+
+/**
+ * @route   POST /api/books/import/excel
+ * @desc    Import/update books from Excel
+ * @access  Private/Admin
+ */
+router.post(
+  "/import/excel",
+  authMiddleware,
+  restrictTo(["ADMIN"]),
+  upload.single("file"),
+  importBooksFromExcel
+);
+
+/**
  * @route   POST /api/books
  * @desc    Create new book
  * @access  Private/Admin
@@ -115,41 +144,14 @@ router.put("/:id", authMiddleware, restrictTo(["ADMIN"]), updateBook);
  */
 router.delete("/:id", authMiddleware, restrictTo(["ADMIN"]), deleteBook);
 
+// ⚠️ IMPORTANT: /:id must be LAST among GET routes to avoid catching
+// "export", "import", "template" etc. as the :id parameter
 /**
- * @route   GET /api/books/export/excel
- * @desc    Export all books to Excel
- * @access  Private/Admin
+ * @route   GET /api/books/:id
+ * @desc    Get single book by ID
+ * @access  Public
+ * @params  id
  */
-router.get(
-  "/export/excel", // Changed from /export/csv
-  authMiddleware,
-  restrictTo(["ADMIN"]),
-  exportBooksToExcel // Updated function name
-);
-
-/**
- * @route   POST /api/books/import/excel
- * @desc    Import/update books from Excel
- * @access  Private/Admin
- */
-router.post(
-  "/import/excel", // Changed from /import/csv
-  authMiddleware,
-  restrictTo(["ADMIN"]),
-  upload.single("file"), // Add this middleware
-  importBooksFromExcel // Updated function name
-);
-
-/**
- * @route   GET /api/books/template/excel
- * @desc    Download Excel template for bulk upload
- * @access  Private/Admin
- */
-router.get(
-  "/template/excel", // Changed from /template/csv
-  authMiddleware,
-  restrictTo(["ADMIN"]),
-  downloadExcelTemplate // Updated function name
-);
+router.get("/:id", getBookById);
 
 module.exports = router;

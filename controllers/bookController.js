@@ -1071,6 +1071,7 @@ const importBooksFromExcel = async (req, res) => {
 
     // Process each row
     for (let i = 0; i < rows.length; i++) {
+      console.log("Row", i, rows[i]);
       try {
         const rowData = rows[i];
 
@@ -1112,9 +1113,9 @@ const importBooksFromExcel = async (req, res) => {
           author: String(rowData.author).trim(),
           tags: rowData.tags
             ? String(rowData.tags)
-                .split("|")
-                .map((tag) => tag.trim())
-                .filter((tag) => tag)
+              .split("|")
+              .map((tag) => tag.trim())
+              .filter((tag) => tag)
             : [],
           featured:
             rowData.featured !== undefined
@@ -1133,12 +1134,12 @@ const importBooksFromExcel = async (req, res) => {
           },
           images: rowData.image_url
             ? [
-                {
-                  url: String(rowData.image_url).trim(),
-                  alt: String(rowData.title).trim(),
-                  isPrimary: true,
-                },
-              ]
+              {
+                url: String(rowData.image_url).trim(),
+                alt: String(rowData.title).trim(),
+                isPrimary: true,
+              },
+            ]
             : [],
         };
 

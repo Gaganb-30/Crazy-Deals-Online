@@ -4,19 +4,19 @@ const path = require("path");
 const fs = require("fs");
 
 /**
- * Bulk import books from Excel file
+ * Bulk import books from Excel file (memoryStorage compatible)
  */
 const bulkImportBooks = async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        message: "Please upload an Excel file",
+        message: "Please upload a valid Excel file",
       });
     }
 
-    // Read the Excel file
-    const workbook = xlsx.readFile(req.file.path);
+    // Read Excel from buffer (not from file path)
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
 
@@ -24,8 +24,6 @@ const bulkImportBooks = async (req, res) => {
     const data = xlsx.utils.sheet_to_json(worksheet);
 
     if (data.length === 0) {
-      // Remove uploaded file
-      fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: "Excel file is empty",
@@ -41,7 +39,7 @@ const bulkImportBooks = async (req, res) => {
       errors: [],
     };
 
-    // Process each row
+    // Process each row (same logic as before, but no file cleanup)
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       const rowNumber = i + 2; // +2 because Excel rows start at 1 and header is row 1
@@ -50,13 +48,13 @@ const bulkImportBooks = async (req, res) => {
         // Validate required fields
         if (!row.title || !row.author || !row.price) {
           results.errors.push(
-            `Row ${rowNumber}: Missing required fields (title, author, or price)`
+            `Row ${rowNumber}: Missing required fields (title, author, or price)`,
           );
           results.failed++;
           continue;
         }
 
-        // Prepare book data
+        // Prepare book data (same as your original logic)
         const bookData = {
           title: row.title.toString().trim(),
           author: row.author.toString().trim(),
@@ -83,7 +81,6 @@ const bulkImportBooks = async (req, res) => {
               row.featured === true
             : false,
           available: true,
-          // Book details
           details: {
             isbn: row.isbn ? row.isbn.toString().trim() : "",
             pages: row.pages ? parseInt(row.pages) : 0,
@@ -117,7 +114,6 @@ const bulkImportBooks = async (req, res) => {
             isPrimary: index === 0,
           }));
         } else {
-          // Default placeholder image
           bookData.images = [
             {
               url: "/placeholder-book.jpg",
@@ -127,14 +123,12 @@ const bulkImportBooks = async (req, res) => {
           ];
         }
 
-        // Validate price
+        // Validate price and stock
         if (isNaN(bookData.price) || bookData.price < 0) {
           results.errors.push(`Row ${rowNumber}: Invalid price - ${row.price}`);
           results.failed++;
           continue;
         }
-
-        // Validate stock
         if (isNaN(bookData.stock) || bookData.stock < 0) {
           results.errors.push(`Row ${rowNumber}: Invalid stock - ${row.stock}`);
           results.failed++;
@@ -146,10 +140,9 @@ const bulkImportBooks = async (req, res) => {
           title: bookData.title,
           author: bookData.author,
         });
-
         if (existingBook) {
           results.errors.push(
-            `Row ${rowNumber}: Book already exists - "${bookData.title}" by ${bookData.author}`
+            `Row ${rowNumber}: Book already exists - "${bookData.title}" by ${bookData.author}`,
           );
           results.failed++;
           continue;
@@ -159,7 +152,6 @@ const bulkImportBooks = async (req, res) => {
         const book = new Book(bookData);
         await book.save();
         results.successful++;
-
         console.log(`✅ Imported: ${bookData.title}`);
       } catch (error) {
         console.error(`Error processing row ${rowNumber}:`, error);
@@ -168,17 +160,13 @@ const bulkImportBooks = async (req, res) => {
       }
     }
 
-    // Remove uploaded file
-    fs.unlinkSync(req.file.path);
-
-    // Prepare response
+    // Prepare response (no file cleanup needed)
     const response = {
       success: true,
       message: `Bulk import completed. Success: ${results.successful}, Failed: ${results.failed}, Total: ${results.total}`,
       data: results,
     };
 
-    // If all failed
     if (results.successful === 0 && results.failed > 0) {
       response.success = false;
       response.message =
@@ -188,12 +176,6 @@ const bulkImportBooks = async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Bulk import error:", error);
-
-    // Remove uploaded file if it exists
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
       message: "Bulk import failed",
@@ -261,11 +243,11 @@ const getImportTemplate = async (req, res) => {
     // Set response headers for file download
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=book-import-template.xlsx"
+      "attachment; filename=book-import-template.xlsx",
     );
 
     // Generate buffer and send
