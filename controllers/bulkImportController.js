@@ -4,8 +4,11 @@ const path = require("path");
 const fs = require("fs");
 
 /**
- * Bulk import books from Excel file (memoryStorage compatible)
+ * Bulk import books from Excel file — optimized with insertMany in 500-row chunks.
+ * Pre-fetches existing title+author pairs in one query instead of per-row lookups.
  */
+const BULK_CHUNK_SIZE = 500;
+
 const bulkImportBooks = async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
@@ -30,7 +33,7 @@ const bulkImportBooks = async (req, res) => {
       });
     }
 
-    console.log(`Processing ${data.length} books...`);
+    console.log(`Processing ${data.length} books for bulk import...`);
 
     const results = {
       total: data.length,
@@ -39,128 +42,165 @@ const bulkImportBooks = async (req, res) => {
       errors: [],
     };
 
-    // Process each row (same logic as before, but no file cleanup)
+    // ── Pre-fetch ALL existing title+author pairs in ONE query ──
+    const existingBooks = await Book.find(
+      {},
+      { title: 1, author: 1 }
+    ).lean();
+    const existingSet = new Set(
+      existingBooks.map((b) => `${b.title}|||${b.author}`)
+    );
+
+    // ── Validate all rows and collect valid documents ──
+    const validDocs = [];
+
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       const rowNumber = i + 2; // +2 because Excel rows start at 1 and header is row 1
 
-      try {
-        // Validate required fields
-        if (!row.title || !row.author || !row.price) {
-          results.errors.push(
-            `Row ${rowNumber}: Missing required fields (title, author, or price)`,
-          );
-          results.failed++;
-          continue;
-        }
-
-        // Prepare book data (same as your original logic)
-        const bookData = {
-          title: row.title.toString().trim(),
-          author: row.author.toString().trim(),
-          publisher: row.publisher
-            ? row.publisher.toString().trim()
-            : "Unknown Publisher",
-          language: row.language ? row.language.toString().trim() : "English",
-          price: parseFloat(row.price),
-          originalPrice: row.originalPrice
-            ? parseFloat(row.originalPrice)
-            : parseFloat(row.price),
-          about: row.about
-            ? row.about.toString().trim()
-            : `A book by ${row.author}`,
-          format:
-            row.format &&
-            ["Paperback", "Hardcover"].includes(row.format.toUpperCase())
-              ? row.format.toUpperCase()
-              : "Paperback",
-          category: row.category ? row.category.toString().trim() : "Fiction",
-          stock: row.stock ? parseInt(row.stock) : 0,
-          featured: row.featured
-            ? row.featured.toString().toLowerCase() === "yes" ||
-              row.featured === true
-            : false,
-          available: true,
-          details: {
-            isbn: row.isbn ? row.isbn.toString().trim() : "",
-            pages: row.pages ? parseInt(row.pages) : 0,
-            country: row.country ? row.country.toString().trim() : "India",
-            publicationDate: row.publicationDate
-              ? new Date(row.publicationDate)
-              : null,
-            weight: row.weight ? parseInt(row.weight) : 0,
-          },
-        };
-
-        // Handle tags
-        if (row.tags) {
-          bookData.tags = row.tags
-            .toString()
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter((tag) => tag);
-        }
-
-        // Handle images
-        if (row.images) {
-          const imageUrls = row.images
-            .toString()
-            .split(",")
-            .map((url) => url.trim())
-            .filter((url) => url);
-          bookData.images = imageUrls.map((url, index) => ({
-            url: url,
-            alt: `${row.title} - Image ${index + 1}`,
-            isPrimary: index === 0,
-          }));
-        } else {
-          bookData.images = [
-            {
-              url: "/placeholder-book.jpg",
-              alt: `${row.title} - Cover Image`,
-              isPrimary: true,
-            },
-          ];
-        }
-
-        // Validate price and stock
-        if (isNaN(bookData.price) || bookData.price < 0) {
-          results.errors.push(`Row ${rowNumber}: Invalid price - ${row.price}`);
-          results.failed++;
-          continue;
-        }
-        if (isNaN(bookData.stock) || bookData.stock < 0) {
-          results.errors.push(`Row ${rowNumber}: Invalid stock - ${row.stock}`);
-          results.failed++;
-          continue;
-        }
-
-        // Check if book already exists (by title and author)
-        const existingBook = await Book.findOne({
-          title: bookData.title,
-          author: bookData.author,
-        });
-        if (existingBook) {
-          results.errors.push(
-            `Row ${rowNumber}: Book already exists - "${bookData.title}" by ${bookData.author}`,
-          );
-          results.failed++;
-          continue;
-        }
-
-        // Create the book
-        const book = new Book(bookData);
-        await book.save();
-        results.successful++;
-        console.log(`✅ Imported: ${bookData.title}`);
-      } catch (error) {
-        console.error(`Error processing row ${rowNumber}:`, error);
-        results.errors.push(`Row ${rowNumber}: ${error.message}`);
+      // Validate required fields
+      if (!row.title || !row.author || !row.price) {
+        results.errors.push(
+          `Row ${rowNumber}: Missing required fields (title, author, or price)`,
+        );
         results.failed++;
+        continue;
+      }
+
+      // Prepare book data
+      const bookData = {
+        title: row.title.toString().trim(),
+        author: row.author.toString().trim(),
+        publisher: row.publisher
+          ? row.publisher.toString().trim()
+          : "Unknown Publisher",
+        language: row.language ? row.language.toString().trim() : "English",
+        price: parseFloat(row.price),
+        originalPrice: row.originalPrice
+          ? parseFloat(row.originalPrice)
+          : parseFloat(row.price),
+        about: row.about
+          ? row.about.toString().trim()
+          : `A book by ${row.author}`,
+        format:
+          row.format &&
+          ["Paperback", "Hardcover"].includes(row.format.toUpperCase())
+            ? row.format.toUpperCase()
+            : "Paperback",
+        category: row.category ? row.category.toString().trim() : "Fiction",
+        stock: row.stock ? parseInt(row.stock) : 0,
+        featured: row.featured
+          ? row.featured.toString().toLowerCase() === "yes" ||
+            row.featured === true
+          : false,
+        available: true,
+        details: {
+          isbn: row.isbn ? row.isbn.toString().trim() : "",
+          pages: row.pages ? parseInt(row.pages) : 0,
+          country: row.country ? row.country.toString().trim() : "India",
+          publicationDate: row.publicationDate
+            ? new Date(row.publicationDate)
+            : null,
+          weight: row.weight ? parseInt(row.weight) : 0,
+        },
+      };
+
+      // Handle tags
+      if (row.tags) {
+        bookData.tags = row.tags
+          .toString()
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag);
+      }
+
+      // Handle images
+      if (row.images) {
+        const imageUrls = row.images
+          .toString()
+          .split(",")
+          .map((url) => url.trim())
+          .filter((url) => url);
+        bookData.images = imageUrls.map((url, index) => ({
+          url: url,
+          alt: `${row.title} - Image ${index + 1}`,
+          isPrimary: index === 0,
+        }));
+      } else {
+        bookData.images = [
+          {
+            url: "/placeholder-book.jpg",
+            alt: `${row.title} - Cover Image`,
+            isPrimary: true,
+          },
+        ];
+      }
+
+      // Validate price and stock
+      if (isNaN(bookData.price) || bookData.price < 0) {
+        results.errors.push(`Row ${rowNumber}: Invalid price - ${row.price}`);
+        results.failed++;
+        continue;
+      }
+      if (isNaN(bookData.stock) || bookData.stock < 0) {
+        results.errors.push(`Row ${rowNumber}: Invalid stock - ${row.stock}`);
+        results.failed++;
+        continue;
+      }
+
+      // Check if book already exists via in-memory Set (O(1) instead of DB query)
+      const key = `${bookData.title}|||${bookData.author}`;
+      if (existingSet.has(key)) {
+        results.errors.push(
+          `Row ${rowNumber}: Book already exists - "${bookData.title}" by ${bookData.author}`,
+        );
+        results.failed++;
+        continue;
+      }
+
+      // Track this key to catch duplicates within the file itself
+      existingSet.add(key);
+      validDocs.push({ data: bookData, row: rowNumber });
+    }
+
+    // ── Insert valid documents in chunks via insertMany ──
+    for (let i = 0; i < validDocs.length; i += BULK_CHUNK_SIZE) {
+      const chunk = validDocs.slice(i, i + BULK_CHUNK_SIZE);
+      try {
+        const docs = chunk.map((c) => c.data);
+        const inserted = await Book.insertMany(docs, { ordered: false });
+        results.successful += inserted.length;
+        console.log(
+          `✅ Chunk ${Math.floor(i / BULK_CHUNK_SIZE) + 1}: Inserted ${inserted.length} books`
+        );
+      } catch (err) {
+        // insertMany with ordered:false — some may have succeeded
+        if (err.insertedDocs) {
+          results.successful += err.insertedDocs.length;
+        }
+        // Extract individual write errors for precise row-level reporting
+        if (err.writeErrors) {
+          err.writeErrors.forEach((we) => {
+            const failedIdx = we.index;
+            const failedRow = chunk[failedIdx]?.row || "?";
+            results.errors.push(`Row ${failedRow}: ${we.errmsg}`);
+            results.failed++;
+          });
+        } else {
+          const failedCount = chunk.length - (err.insertedDocs?.length || 0);
+          results.failed += failedCount;
+          results.errors.push(
+            `Insert chunk error (rows ${chunk[0].row}-${chunk[chunk.length - 1].row}): ${err.message}`
+          );
+        }
       }
     }
 
-    // Prepare response (no file cleanup needed)
+    console.log(
+      `✅ Bulk import complete: ${results.successful} successful, ${results.failed} failed out of ${results.total}`
+    );
+
+    // Prepare response
     const response = {
       success: true,
       message: `Bulk import completed. Success: ${results.successful}, Failed: ${results.failed}, Total: ${results.total}`,
@@ -183,6 +223,7 @@ const bulkImportBooks = async (req, res) => {
     });
   }
 };
+
 
 /**
  * Get import template

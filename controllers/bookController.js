@@ -2,6 +2,7 @@
 const Book = require("../models/Book");
 const Fuse = require("fuse.js");
 const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 
 // ========================
 // 🎯 CONTROLLER FUNCTIONS
@@ -893,55 +894,11 @@ const hybridSearchBooks = async (req, res) => {
 };
 
 /**
- * Export books to Excel
+ * Export books to Excel — streaming via ExcelJS + MongoDB cursor
+ * Memory usage stays constant regardless of dataset size.
  */
 const exportBooksToExcel = async (req, res) => {
   try {
-    const books = await Book.find({}).lean();
-
-    // Transform data for Excel
-    const excelData = books.map((book) => ({
-      _id: book._id.toString(),
-      title: book.title,
-      publisher: book.publisher,
-      language: book.language,
-      price: book.price,
-      originalPrice: book.originalPrice,
-      available: book.available,
-      stock: book.stock,
-      about: book.about,
-      format: book.format,
-      category: book.category,
-      author: book.author,
-      tags: book.tags ? book.tags.join("|") : "",
-      featured: book.featured,
-      // Book details
-      isbn: book.details?.isbn,
-      pages: book.details?.pages,
-      country: book.details?.country,
-      publicationDate: book.details?.publicationDate
-        ? new Date(book.details.publicationDate).toISOString().split("T")[0]
-        : "",
-      weight: book.details?.weight,
-      // Images (primary image URL)
-      image_url:
-        book.images?.find((img) => img.isPrimary)?.url ||
-        book.images?.[0]?.url ||
-        "",
-    }));
-
-    // Create a new workbook
-    const wb = XLSX.utils.book_new();
-
-    // Create worksheet
-    const ws = XLSX.utils.json_to_sheet(excelData);
-
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, "Books");
-
-    // Generate buffer
-    const excelBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -950,14 +907,84 @@ const exportBooksToExcel = async (req, res) => {
       "Content-Disposition",
       "attachment; filename=books_export.xlsx"
     );
-    res.send(excelBuffer);
+
+    // Create a streaming workbook that writes directly to the response
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
+    const worksheet = workbook.addWorksheet("Books");
+
+    // Define columns once
+    worksheet.columns = [
+      { header: "_id", key: "_id", width: 25 },
+      { header: "title", key: "title", width: 40 },
+      { header: "publisher", key: "publisher", width: 30 },
+      { header: "language", key: "language", width: 15 },
+      { header: "price", key: "price", width: 15 },
+      { header: "originalPrice", key: "originalPrice", width: 15 },
+      { header: "available", key: "available", width: 10 },
+      { header: "stock", key: "stock", width: 10 },
+      { header: "about", key: "about", width: 50 },
+      { header: "format", key: "format", width: 15 },
+      { header: "category", key: "category", width: 20 },
+      { header: "author", key: "author", width: 25 },
+      { header: "tags", key: "tags", width: 30 },
+      { header: "featured", key: "featured", width: 10 },
+      { header: "isbn", key: "isbn", width: 20 },
+      { header: "pages", key: "pages", width: 10 },
+      { header: "country", key: "country", width: 15 },
+      { header: "publicationDate", key: "publicationDate", width: 15 },
+      { header: "weight", key: "weight", width: 10 },
+      { header: "image_url", key: "image_url", width: 40 },
+    ];
+
+    // Stream documents from MongoDB using a cursor — never loads all into RAM
+    const cursor = Book.find({}).lean().cursor();
+    let count = 0;
+
+    for await (const book of cursor) {
+      worksheet.addRow({
+        _id: book._id.toString(),
+        title: book.title,
+        publisher: book.publisher,
+        language: book.language,
+        price: book.price,
+        originalPrice: book.originalPrice,
+        available: book.available,
+        stock: book.stock,
+        about: book.about,
+        format: book.format,
+        category: book.category,
+        author: book.author,
+        tags: book.tags ? book.tags.join("|") : "",
+        featured: book.featured,
+        isbn: book.details?.isbn,
+        pages: book.details?.pages,
+        country: book.details?.country,
+        publicationDate: book.details?.publicationDate
+          ? new Date(book.details.publicationDate).toISOString().split("T")[0]
+          : "",
+        weight: book.details?.weight,
+        image_url:
+          book.images?.find((img) => img.isPrimary)?.url ||
+          book.images?.[0]?.url ||
+          "",
+      }).commit(); // commit flushes the row to the stream immediately
+
+      count++;
+    }
+
+    // Finalize — flushes remaining data and ends the response
+    await workbook.commit();
+    console.log(`✅ Exported ${count} books to Excel (streamed)`);
   } catch (error) {
     console.error("Export Excel Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to export books to Excel",
-      error: error.message,
-    });
+    // Only send error JSON if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to export books to Excel",
+        error: error.message,
+      });
+    }
   }
 };
 
@@ -1045,8 +1072,11 @@ const downloadExcelTemplate = async (req, res) => {
 };
 
 /**
- * Import books from Excel
+ * Import books from Excel — optimized with bulkWrite in 500-row chunks.
+ * Pre-fetches existing ISBNs in one query instead of per-row lookups.
  */
+const IMPORT_CHUNK_SIZE = 500;
+
 const importBooksFromExcel = async (req, res) => {
   console.log("Import Excel Request Received");
   try {
@@ -1061,128 +1091,188 @@ const importBooksFromExcel = async (req, res) => {
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-
-    // Convert to JSON
     const rows = XLSX.utils.sheet_to_json(worksheet);
 
-    const results = [];
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Excel file is empty",
+      });
+    }
+
+    console.log(`Processing ${rows.length} rows for import...`);
+
+    // ── Pre-fetch existing ISBNs in ONE query for O(1) duplicate lookups ──
+    const existingBooks = await Book.find(
+      {},
+      { "details.isbn": 1 }
+    ).lean();
+    const existingIsbnSet = new Set(
+      existingBooks
+        .map((b) => b.details?.isbn)
+        .filter((isbn) => isbn && !isbn.startsWith("TEMP-"))
+    );
+
     const errors = [];
-    let processed = 0;
+    const results = { created: 0, updated: 0 };
 
-    // Process each row
+    // ── Separate rows into updates (have _id) and inserts (new) ──
+    const updateOps = [];
+    const insertDocs = [];
+
     for (let i = 0; i < rows.length; i++) {
-      // console.log("Row", i, rows[i]);
-      try {
-        const rowData = rows[i];
+      const rowData = rows[i];
+      const rowNumber = i + 2; // Excel header is row 1
 
-        // Skip empty rows
-        if (!rowData.title && !rowData.author) {
-          continue;
-        }
+      // Skip empty rows
+      if (!rowData.title && !rowData.author) continue;
 
-        // Validate required fields
-        if (!rowData.title || !rowData.publisher || !rowData.author) {
-          errors.push(
-            `Row ${i + 2}: Missing required fields (title, publisher, author)`
-          );
-          continue;
-        }
+      // Validate required fields
+      if (!rowData.title || !rowData.publisher || !rowData.author) {
+        errors.push(
+          `Row ${rowNumber}: Missing required fields (title, publisher, author)`
+        );
+        continue;
+      }
 
-        // Prepare book data
-        const bookData = {
-          title: String(rowData.title).trim(),
-          publisher: String(rowData.publisher).trim(),
-          language: rowData.language
-            ? String(rowData.language).trim()
-            : "English",
-          price: parseFloat(rowData.price) || 0,
-          originalPrice:
-            parseFloat(rowData.originalPrice) || parseFloat(rowData.price) || 0,
-          available:
-            rowData.available !== undefined
-              ? String(rowData.available).toLowerCase() === "true"
-              : true,
-          stock: parseInt(rowData.stock) || 0,
-          about: rowData.about ? String(rowData.about).trim() : "",
-          format: ["Paperback", "Hardcover"].includes(rowData.format)
-            ? rowData.format
-            : "Paperback",
-          category: rowData.category
-            ? String(rowData.category).trim().toLowerCase()
-            : "general",
-          author: String(rowData.author).trim(),
-          tags: rowData.tags
-            ? String(rowData.tags)
+      // Prepare book data
+      const bookData = {
+        title: String(rowData.title).trim(),
+        publisher: String(rowData.publisher).trim(),
+        language: rowData.language
+          ? String(rowData.language).trim()
+          : "English",
+        price: parseFloat(rowData.price) || 0,
+        originalPrice:
+          parseFloat(rowData.originalPrice) || parseFloat(rowData.price) || 0,
+        available:
+          rowData.available !== undefined
+            ? String(rowData.available).toLowerCase() === "true"
+            : true,
+        stock: parseInt(rowData.stock) || 0,
+        about: rowData.about ? String(rowData.about).trim() : "",
+        format: ["Paperback", "Hardcover"].includes(rowData.format)
+          ? rowData.format
+          : "Paperback",
+        category: rowData.category
+          ? String(rowData.category).trim().toLowerCase()
+          : "general",
+        author: String(rowData.author).trim(),
+        tags: rowData.tags
+          ? String(rowData.tags)
               .split("|")
               .map((tag) => tag.trim())
               .filter((tag) => tag)
-            : [],
-          featured:
-            rowData.featured !== undefined
-              ? String(rowData.featured).toLowerCase() === "true"
-              : false,
-          details: {
-            isbn: rowData.isbn
-              ? String(rowData.isbn).trim()
-              : `TEMP-${Date.now()}-${i}`,
-            pages: parseInt(rowData.pages) || 0,
-            country: rowData.country ? String(rowData.country).trim() : "India",
-            publicationDate: rowData.publicationDate
-              ? new Date(rowData.publicationDate)
-              : null,
-            weight: parseInt(rowData.weight) || 300,
-          },
-          images: rowData.image_url
-            ? [
+          : [],
+        featured:
+          rowData.featured !== undefined
+            ? String(rowData.featured).toLowerCase() === "true"
+            : false,
+        details: {
+          isbn: rowData.isbn
+            ? String(rowData.isbn).trim()
+            : `TEMP-${Date.now()}-${i}`,
+          pages: parseInt(rowData.pages) || 0,
+          country: rowData.country ? String(rowData.country).trim() : "India",
+          publicationDate: rowData.publicationDate
+            ? new Date(rowData.publicationDate)
+            : null,
+          weight: parseInt(rowData.weight) || 300,
+        },
+        images: rowData.image_url
+          ? [
               {
                 url: String(rowData.image_url).trim(),
                 alt: String(rowData.title).trim(),
                 isPrimary: true,
               },
             ]
-            : [],
-        };
+          : [],
+      };
 
-        let result;
-
-        // Update existing book or create new one
-        if (rowData._id && String(rowData._id).trim()) {
-          // Update existing book
-          result = await Book.findByIdAndUpdate(
-            String(rowData._id).trim(),
-            bookData,
-            {
-              new: true,
-              runValidators: true,
-            }
-          );
-          if (!result) {
-            errors.push(`Row ${i + 2}: Book with ID ${rowData._id} not found`);
-            continue;
-          }
-          results.push({ action: "updated", book: result, row: i + 2 });
-        } else {
-          // Check if ISBN already exists
-          if (rowData.isbn) {
-            const existingBook = await Book.findOne({
-              "details.isbn": String(rowData.isbn).trim(),
-            });
-            if (existingBook) {
-              errors.push(`Row ${i + 2}: ISBN ${rowData.isbn} already exists`);
-              continue;
-            }
-          }
-
-          // Create new book
-          result = await Book.create(bookData);
-          results.push({ action: "created", book: result, row: i + 2 });
+      // Route to update or insert
+      if (rowData._id && String(rowData._id).trim()) {
+        // Update existing book by _id
+        updateOps.push({
+          updateOne: {
+            filter: { _id: String(rowData._id).trim() },
+            update: { $set: bookData },
+          },
+          _row: rowNumber,
+        });
+      } else {
+        // Check ISBN duplicate via in-memory Set (O(1))
+        const isbn = bookData.details.isbn;
+        if (isbn && !isbn.startsWith("TEMP-") && existingIsbnSet.has(isbn)) {
+          errors.push(`Row ${rowNumber}: ISBN ${isbn} already exists`);
+          continue;
         }
-
-        processed++;
-      } catch (error) {
-        errors.push(`Row ${i + 2}: ${error.message}`);
+        // Track this ISBN to catch duplicates within the file itself
+        if (isbn && !isbn.startsWith("TEMP-")) {
+          existingIsbnSet.add(isbn);
+        }
+        insertDocs.push({ data: bookData, row: rowNumber });
       }
     }
+
+    // ── Process UPDATES in chunks via bulkWrite ──
+    for (let i = 0; i < updateOps.length; i += IMPORT_CHUNK_SIZE) {
+      const chunk = updateOps.slice(i, i + IMPORT_CHUNK_SIZE);
+      try {
+        const bulkOps = chunk.map(({ updateOne }) => ({ updateOne }));
+        const result = await Book.bulkWrite(bulkOps, { ordered: false });
+        results.updated += result.modifiedCount || 0;
+
+        // Track rows where the _id wasn't found (nMatched < expected)
+        const notMatched = chunk.length - (result.matchedCount || 0);
+        if (notMatched > 0) {
+          // We can't pinpoint exact rows from bulkWrite, but log the count
+          errors.push(
+            `${notMatched} update(s) in chunk starting at row ${chunk[0]._row} had no matching _id`
+          );
+        }
+      } catch (err) {
+        // ordered:false means partial success is possible
+        if (err.result) {
+          results.updated += err.result.nModified || 0;
+        }
+        errors.push(
+          `Update chunk error (rows ${chunk[0]._row}-${chunk[chunk.length - 1]._row}): ${err.message}`
+        );
+      }
+    }
+
+    // ── Process INSERTS in chunks via insertMany ──
+    for (let i = 0; i < insertDocs.length; i += IMPORT_CHUNK_SIZE) {
+      const chunk = insertDocs.slice(i, i + IMPORT_CHUNK_SIZE);
+      try {
+        const docs = chunk.map((c) => c.data);
+        const inserted = await Book.insertMany(docs, { ordered: false });
+        results.created += inserted.length;
+      } catch (err) {
+        // insertMany with ordered:false — some may have succeeded
+        if (err.insertedDocs) {
+          results.created += err.insertedDocs.length;
+        }
+        // Extract individual write errors
+        if (err.writeErrors) {
+          err.writeErrors.forEach((we) => {
+            const failedIdx = we.index;
+            const failedRow = chunk[failedIdx]?.row || "?";
+            errors.push(`Row ${failedRow}: ${we.errmsg}`);
+          });
+        } else {
+          errors.push(
+            `Insert chunk error (rows ${chunk[0].row}-${chunk[chunk.length - 1].row}): ${err.message}`
+          );
+        }
+      }
+    }
+
+    const processed = results.created + results.updated;
+    console.log(
+      `✅ Import complete: ${results.created} created, ${results.updated} updated, ${errors.length} errors`
+    );
 
     res.status(200).json({
       success: true,
@@ -1190,11 +1280,10 @@ const importBooksFromExcel = async (req, res) => {
       data: {
         processed,
         totalRows: rows.length,
-        results: results.slice(0, 10), // Return first 10 results
         errors: errors.length > 0 ? errors : undefined,
         summary: {
-          created: results.filter((r) => r.action === "created").length,
-          updated: results.filter((r) => r.action === "updated").length,
+          created: results.created,
+          updated: results.updated,
           failed: errors.length,
         },
       },
