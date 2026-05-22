@@ -601,7 +601,7 @@ const getAllOrders = async (req, res) => {
         },
         {
           path: "items.book",
-          select: "id title author images price format", // Added price and format
+          select: "id title author images price format details.isbn",
         },
       ],
     };
@@ -681,7 +681,7 @@ const updateOrderStatus = async (req, res) => {
     // Populate order for response
     const updatedOrder = await Order.findById(orderId)
       .populate("user", "name email phone")
-      .populate("items.book", "id title author images price format");
+      .populate("items.book", "id title author images price format details.isbn");
 
     res.json({
       success: true,
