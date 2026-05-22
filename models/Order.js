@@ -194,11 +194,15 @@ const orderSchema = new mongoose.Schema(
       required: [true, "Billing address is required"],
     },
 
-    // Third-party delivery tracking - Simple redirect link
+    // Third-party delivery tracking
     deliveryTracking: {
       trackingLink: {
         type: String,
         sparse: true,
+      },
+      shipmentId: {
+        type: String,
+        trim: true,
       },
       shippedAt: {
         type: Date,
@@ -318,9 +322,9 @@ orderSchema.virtual("deliveryStatus").get(function () {
   return "Confirmed";
 });
 
-// Virtual for hasTracking - check if tracking link exists
+// Virtual for hasTracking - check if tracking info exists
 orderSchema.virtual("hasTracking").get(function () {
-  return !!(this.deliveryTracking && this.deliveryTracking.trackingLink);
+  return !!(this.deliveryTracking && (this.deliveryTracking.trackingLink || this.deliveryTracking.shipmentId));
 });
 
 // Static method to find orders by user with pagination
@@ -449,16 +453,22 @@ orderSchema.methods.updateStatus = function (
   return this.save();
 };
 
-// Method to add delivery tracking link (for admin)
-orderSchema.methods.addTrackingLink = function (trackingLink) {
+// Method to add delivery tracking info (for admin)
+orderSchema.methods.addTrackingInfo = function ({ trackingLink, shipmentId } = {}) {
   if (!this.deliveryTracking) {
     this.deliveryTracking = {};
   }
-  this.deliveryTracking.trackingLink = trackingLink;
+  if (trackingLink) this.deliveryTracking.trackingLink = trackingLink;
+  if (shipmentId) this.deliveryTracking.shipmentId = shipmentId;
   this.status = "SHIPPED";
   this.deliveryTracking.shippedAt = new Date();
 
   return this.save();
+};
+
+// Keep backward-compatible alias
+orderSchema.methods.addTrackingLink = function (trackingLink) {
+  return this.addTrackingInfo({ trackingLink });
 };
 
 // Method to check if order can be cancelled

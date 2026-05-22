@@ -638,7 +638,7 @@ const getAllOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, trackingLink, notes } = req.body; // Removed trackingNumber, carrier
+    const { status, trackingLink, shipmentId, notes } = req.body;
 
     if (!orderId) {
       return res.status(400).json({
@@ -673,9 +673,9 @@ const updateOrderStatus = async (req, res) => {
     // Update order status using model method
     await order.updateStatus(status, notes, true);
 
-    // Handle tracking link for shipped orders
-    if (status === "SHIPPED" && trackingLink) {
-      await order.addTrackingLink(trackingLink);
+    // Handle tracking info for shipped orders
+    if (status === "SHIPPED" && (trackingLink || shipmentId)) {
+      await order.addTrackingInfo({ trackingLink, shipmentId });
     }
 
     // Populate order for response
@@ -689,6 +689,7 @@ const updateOrderStatus = async (req, res) => {
       data: {
         order: updatedOrder,
         trackingLink: updatedOrder.deliveryTracking?.trackingLink,
+        shipmentId: updatedOrder.deliveryTracking?.shipmentId,
       },
     });
   } catch (error) {
